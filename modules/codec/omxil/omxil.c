@@ -886,7 +886,7 @@ static int OpenGeneric( vlc_object_t *p_this, bool b_encode )
     vlc_cond_init (&p_sys->out.fifo.wait);
     p_sys->out.fifo.offset = offsetof(OMX_BUFFERHEADERTYPE, pInputPortPrivate) / sizeof(void *);
     p_sys->out.fifo.pp_last = &p_sys->out.fifo.p_first;
-    p_sys->out.b_direct = false;
+    p_sys->out.b_direct = true;
     p_sys->out.b_flushed = true;
     p_sys->out.p_fmt = &p_dec->fmt_out;
     p_sys->ports = 2;
