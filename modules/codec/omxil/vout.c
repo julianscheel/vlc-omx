@@ -183,7 +183,7 @@ static int Open(vlc_object_t *p_this)
     vlc_cond_init (&p_sys->port.fifo.wait);
     p_sys->port.fifo.offset = offsetof(OMX_BUFFERHEADERTYPE, pOutputPortPrivate) / sizeof(void *);
     p_sys->port.fifo.pp_last = &p_sys->port.fifo.p_first;
-    p_sys->port.b_direct = false;
+    p_sys->port.b_direct = true;
     p_sys->port.b_flushed = true;
 
     OMX_PORT_PARAM_TYPE param;
