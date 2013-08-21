@@ -225,6 +225,13 @@ static int Open(vlc_object_t *p_this)
     if (def->format.video.nSliceHeight < def->format.video.nFrameHeight)
         def->format.video.nSliceHeight = def->format.video.nFrameHeight;
 
+    if (p_sys->port.definition.nBufferCountActual < 14) {
+        p_sys->port.definition.nBufferCountActual = 20;
+        OMX_SetParameter(p_sys->omx_handle, OMX_IndexParamPortDefinition, &p_sys->port.definition);
+        OMX_GetParameter(p_sys->omx_handle, OMX_IndexParamPortDefinition, &p_sys->port.definition);
+        msg_Dbg(vd, "nBufferCountActual is too low, increment to %d", p_sys->port.definition.nBufferCountActual);
+    }
+
     p_sys->port.pp_buffers =
             malloc(p_sys->port.definition.nBufferCountActual *
                    sizeof(OMX_BUFFERHEADERTYPE*));
