@@ -243,6 +243,7 @@ static int OpenDecoder( vlc_object_t *p_this )
     p_dec->pf_decode_video = DecodeBlock;
     p_dec->fmt_out.i_cat = VIDEO_ES;
     p_dec->fmt_out.i_codec = 0;
+    p_dec->i_dpb_picture_buffers = DPB_COUNT;
 
     return VLC_SUCCESS;
 }

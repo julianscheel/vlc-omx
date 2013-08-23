@@ -102,6 +102,7 @@ struct decoder_t
     void            (*pf_picture_link)   ( decoder_t *, picture_t * );
     void            (*pf_picture_unlink) ( decoder_t *, picture_t * );
 
+    int             i_dpb_picture_buffers;
     /**
      * Number of extra (ie in addition to the DPB) picture buffers
      * needed for decoding.

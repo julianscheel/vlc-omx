@@ -2371,26 +2371,9 @@ static picture_t *vout_new_buffer( decoder_t *p_dec )
         p_owner->p_vout = NULL;
         vlc_mutex_unlock( &p_owner->lock );
 
-        unsigned dpb_size;
-        switch( p_dec->fmt_in.i_codec )
-        {
-        case VLC_CODEC_H264:
-        case VLC_CODEC_DIRAC: /* FIXME valid ? */
-            dpb_size = 18;
-            break;
-        case VLC_CODEC_VP5:
-        case VLC_CODEC_VP6:
-        case VLC_CODEC_VP6F:
-        case VLC_CODEC_VP8:
-            dpb_size = 3;
-            break;
-        default:
-            dpb_size = 2;
-            break;
-        }
         p_vout = input_resource_RequestVout( p_owner->p_resource,
                                              p_vout, &fmt,
-                                             dpb_size +
+                                             p_dec->i_dpb_picture_buffers +
                                              p_dec->i_extra_picture_buffers +
                                              1 + DECODER_MAX_BUFFERING_COUNT,
                                              true );
