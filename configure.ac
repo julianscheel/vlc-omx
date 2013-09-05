@@ -2160,6 +2160,16 @@ then
 fi
 
 dnl
+dnl openmax il deinterlace plugin
+dnl
+AC_ARG_ENABLE(omxil-deinterlace,
+  [  --enable-omxil-deinterlace     openmax il deinterlace module (default disabled)])
+if test "${enable_omxil_deinterlace}" = "yes"
+then
+  VLC_ADD_PLUGIN([omxil_deinterlace])
+fi
+
+dnl
 dnl raspberry pi openmax il configuration
 dnl
 AC_ARG_ENABLE(rpi-omxil,
@@ -2168,6 +2178,7 @@ if test "${enable_rpi_omxil}" = "yes"
 then
   VLC_ADD_PLUGIN([omxil omxil_vout])
   VLC_ADD_CFLAGS([omxil omxil_vout],[-DRPI_OMX])
+  VLC_ADD_CFLAGS([omxil omxil_deinterlace],[-DRPI_OMX])
 fi
 
 dnl

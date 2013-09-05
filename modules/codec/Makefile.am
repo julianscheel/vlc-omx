@@ -327,6 +327,13 @@ libomxil_vout_plugin_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(srcdir)/codec/omxil $(CFLA
 libomxil_vout_plugin_la_LIBADD = $(LIBDL)
 libomxil_vout_plugin_la_LDFLAGS = $(AM_LDFLAGS) -rpath '$(codecdir)'
 
+libomxil_deinterlace_plugin_la_SOURCES = \
+	codec/omxil/deinterlace.c codec/omxil/omxil_core.c \
+	codec/omxil/utils.c codec/omxil/qcom.c
+libomxil_deinterlace_plugin_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(srcdir)/codec/omxil $(CFLAGS_omxil_deinterlace)
+libomxil_deinterlace_plugin_la_LIBADD = $(LIBDL)
+libomxil_deinterlace_plugin_la_LDFLAGS = $(AM_LDFLAGS) -rpath '$(codecdir)'
+
 libiomx_plugin_la_SOURCES = $(libomxil_plugin_la_SOURCES)
 libiomx_plugin_la_CPPFLAGS = $(libomxil_plugin_la_CPPFLAGS) -DUSE_IOMX
 libiomx_plugin_la_LIBADD = $(libomxil_plugin_la_LIBADD)
@@ -334,8 +341,8 @@ libiomx_plugin_la_LIBADD = $(libomxil_plugin_la_LIBADD)
 libmediacodec_plugin_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(srcdir)/codec/omxil
 libmediacodec_plugin_la_SOURCES = codec/omxil/android_mediacodec.c codec/omxil/utils.c
 
-codec_LTLIBRARIES += $(LTLIBomxil) $(LTLIBomxil_vout)
-EXTRA_LTLIBRARIES += libomxil_plugin.la libomxil_vout_plugin.la
+codec_LTLIBRARIES += $(LTLIBomxil) $(LTLIBomxil_vout) $(LTLIBomxil_deinterlace)
+EXTRA_LTLIBRARIES += libomxil_plugin.la libomxil_vout_plugin.la libomxil_deinterlace_plugin.la
 if HAVE_ANDROID
 codec_LTLIBRARIES += libiomx_plugin.la libmediacodec_plugin.la
 endif

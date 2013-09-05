@@ -207,6 +207,7 @@ static const struct
     { "video_decoder.avc", "OMX.broadcom.video_decode" },
     { "video_decoder.mpeg2", "OMX.broadcom.video_decode" },
     { "iv_renderer", "OMX.broadcom.video_render" },
+    { "image_fx", "OMX.broadcom.image_fx" },
 #endif
     { 0, 0 }
 };
