@@ -1245,6 +1245,21 @@ static picture_t *DecodeVideo( decoder_t *p_dec, block_t **pp_block )
         return NULL;
     }
 
+    /* Use the aspect ratio provided by the input (ie read from packetizer).
+     * The broadcom OMX implementation has a vendor-specific extension for
+     * retrieving aspect ratio directly from the decoder, which we use.
+     * We prefer that one over the packetizer information. All others will
+     * just pass through the incoming aspect ratio information. */
+    if((p_dec->fmt_in.video.i_sar_num != 0 &&
+            p_dec->fmt_in.video.i_sar_den != 0) &&
+            (p_dec->fmt_out.video.i_sar_num == 0 ||
+             p_dec->fmt_out.video.i_sar_den == 0 ||
+             strncmp(p_sys->psz_component, "OMX.broadcom.", 13)))
+    {
+        p_dec->fmt_out.video.i_sar_num = p_dec->fmt_in.video.i_sar_num;
+        p_dec->fmt_out.video.i_sar_den = p_dec->fmt_in.video.i_sar_den;
+    }
+
     /* Take care of decoded frames first */
     while(!p_pic)
     {
