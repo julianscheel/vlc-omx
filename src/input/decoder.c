@@ -1819,6 +1819,21 @@ static void DecoderProcessVideo( decoder_t *p_dec, block_t *p_block, bool b_flus
                 es_format_Clean( &p_dec->fmt_in );
                 es_format_Copy( &p_dec->fmt_in, &p_packetizer->fmt_out );
             }
+
+            /* If the packetizer provides aspect ratio information use it as
+             * long as the decoder itself provides no aspect ratio
+             * information. */
+            if( p_packetizer->fmt_out.video.i_sar_num > 0 &&
+                    p_packetizer->fmt_out.video.i_sar_den > 0 &&
+                    (p_dec->fmt_in.video.i_sar_num == 0 ||
+                     p_dec->fmt_in.video.i_sar_den == 0) )
+            {
+                p_dec->fmt_in.video.i_sar_num =
+                    p_packetizer->fmt_out.video.i_sar_num;
+                p_dec->fmt_in.video.i_sar_den=
+                    p_packetizer->fmt_out.video.i_sar_den;
+            }
+
             if( p_packetizer->pf_get_cc )
                 DecoderGetCc( p_dec, p_packetizer );
 
