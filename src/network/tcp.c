@@ -134,7 +134,7 @@ int net_Connect( vlc_object_t *p_this, const char *psz_host, int i_port,
     struct addrinfo hints = {
         .ai_socktype = type,
         .ai_protocol = proto,
-        .ai_flags = AI_NUMERICSERV | AI_IDN,
+        .ai_flags = AI_NUMERICSERV,
     }, *res;
 
     int val = vlc_getaddrinfo (psz_realhost, i_realport, &hints, &res);
