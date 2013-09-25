@@ -55,8 +55,9 @@ static const char *ppsz_dll_list[] =
 {
 #if defined(USE_IOMX)
     "libiomx.so", /* Not used when using IOMX, the lib should already be loaded */
-#elif defined(RPI_OMX)
-    "/opt/vc/lib/libopenmaxil.so",  /* Broadcom IL core */
+#elif defined(RPI_OMX)  /* Broadcom IL core */
+    "libopenmaxil.so",
+    "/opt/vc/lib/libopenmaxil.so",
 #else
     "libOMX_Core.so", /* TI OMAP IL core */
     "libOmxCore.so", /* Qualcomm IL core */
@@ -69,7 +70,8 @@ static const char *ppsz_dll_list[] =
 #ifdef RPI_OMX
 static const char *ppsz_extra_dll_list[] =
 {
-    "/opt/vc/lib/libbcm_host.so",  /* Broadcom host library */
+    "libbcm_host.so",  /* Broadcom host library */
+    "/opt/vc/lib/libbcm_host.so",
     0
 };
 #endif
