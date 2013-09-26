@@ -89,6 +89,8 @@ OMX_ERRORTYPE (*pf_get_handle) (OMX_HANDLETYPE *, OMX_STRING,
 OMX_ERRORTYPE (*pf_free_handle) (OMX_HANDLETYPE);
 OMX_ERRORTYPE (*pf_component_enum)(OMX_STRING, OMX_U32, OMX_U32);
 OMX_ERRORTYPE (*pf_get_roles_of_component)(OMX_STRING, OMX_U32 *, OMX_U8 **);
+OMX_ERRORTYPE (*pf_setup_tunnel)(OMX_HANDLETYPE, OMX_U32,
+        OMX_HANDLETYPE, OMX_U32);
 
 #ifdef RPI_OMX
 static void *extra_dll_handle;
@@ -153,8 +155,9 @@ int InitOmxCore(vlc_object_t *p_this)
     pf_component_enum = dlsym( dll_handle, "OMX_ComponentNameEnum" );
     pf_get_roles_of_component = dlsym( dll_handle, "OMX_GetRolesOfComponent" );
     pf_get_debug_information = dlsym( dll_handle, "OMX_GetDebugInformation" );
+    pf_setup_tunnel = dlsym( dll_handle, "OMX_SetupTunnel" );
     if( !pf_init || !pf_deinit || !pf_get_handle || !pf_free_handle ||
-        !pf_component_enum || !pf_get_roles_of_component )
+        !pf_component_enum || !pf_get_roles_of_component || !pf_setup_tunnel )
     {
         msg_Warn( p_this, "cannot find OMX_* symbols in `%s' (%s)",
                   ppsz_dll_list[i], dlerror() );
