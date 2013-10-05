@@ -934,7 +934,7 @@ OMX_ERRORTYPE GetAudioParameters(OMX_HANDLETYPE handle,
 /*****************************************************************************
  * PrintOmx: print component summary 
  *****************************************************************************/
-void PrintOmx(decoder_t *p_dec, OMX_HANDLETYPE omx_handle, OMX_U32 i_port)
+void PrintOmx(vlc_object_t *p_this, OMX_HANDLETYPE omx_handle, OMX_U32 i_port)
 {
     OMX_PARAM_PORTDEFINITIONTYPE definition;
     OMX_PORT_PARAM_TYPE param;
@@ -951,7 +951,7 @@ void PrintOmx(decoder_t *p_dec, OMX_HANDLETYPE omx_handle, OMX_U32 i_port)
         if(omx_error != OMX_ErrorNone) continue;
 
         if(i_port == OMX_ALL)
-            msg_Dbg( p_dec, "found %i %s ports", (int)param.nPorts,
+            msg_Dbg( p_this, "found %i %s ports", (int)param.nPorts,
                      i == 0 ? "audio" : i == 1 ? "image" : "video" );
 
         for(j = 0; j < param.nPorts; j++)
@@ -979,7 +979,7 @@ void PrintOmx(decoder_t *p_dec, OMX_HANDLETYPE omx_handle, OMX_U32 i_port)
             omx_error = OMX_GetParameter(omx_handle, OMX_IndexParamNumAvailableStreams,
                                          (OMX_PTR)&u32param);
 
-            msg_Dbg( p_dec, "-> %s %i (%i streams) (%i:%i:%i buffers) (%i,%i) %s",
+            msg_Dbg( p_this, "-> %s %i (%i streams) (%i:%i:%i buffers) (%i,%i) %s",
                      definition.eDir == OMX_DirOutput ? "output" : "input",
                      (int)definition.nPortIndex, (int)u32param.nU32,
                      (int)definition.nBufferCountActual,
@@ -1009,7 +1009,7 @@ void PrintOmx(decoder_t *p_dec, OMX_HANDLETYPE omx_handle, OMX_U32 i_port)
                     crop_rect.nHeight = definition.format.video.nFrameHeight;
                 }
 
-                msg_Dbg( p_dec, "  -> video %s %ix%i@%.2f (%i,%i) (%i,%i) (%i,%i,%i,%i)", psz_name,
+                msg_Dbg( p_this, "  -> video %s %ix%i@%.2f (%i,%i) (%i,%i) (%i,%i,%i,%i)", psz_name,
                          (int)definition.format.video.nFrameWidth,
                          (int)definition.format.video.nFrameHeight,
                          (float)definition.format.video.xFramerate/(float)(1<<16),
@@ -1032,7 +1032,7 @@ void PrintOmx(decoder_t *p_dec, OMX_HANDLETYPE omx_handle, OMX_U32 i_port)
                                    &i_channels, &i_samplerate, &i_bitrate,
                                    &i_bitspersample, &i_blockalign);
 
-                msg_Dbg( p_dec, "  -> audio %s (%i) %i,%i,%i,%i,%i", psz_name,
+                msg_Dbg( p_this, "  -> audio %s (%i) %i,%i,%i,%i,%i", psz_name,
                          (int)definition.format.audio.eEncoding,
                          i_channels, i_samplerate, i_bitrate, i_bitspersample,
                          i_blockalign);

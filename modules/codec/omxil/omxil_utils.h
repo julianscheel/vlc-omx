@@ -209,7 +209,7 @@ const char *CommandToString(OMX_COMMANDTYPE command);
 const char *EventToString(OMX_EVENTTYPE event);
 const char *ErrorToString(OMX_ERRORTYPE error);
 
-void PrintOmx(decoder_t *p_dec, OMX_HANDLETYPE omx_handle, OMX_U32 i_port);
+void PrintOmx(vlc_object_t *p_this, OMX_HANDLETYPE omx_handle, OMX_U32 i_port);
 
 /*****************************************************************************
  * fourcc -> omx id mapping
