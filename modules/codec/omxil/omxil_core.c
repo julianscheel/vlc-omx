@@ -152,6 +152,7 @@ int InitOmxCore(vlc_object_t *p_this)
     pf_free_handle = dlsym( dll_handle, "OMX_FreeHandle" );
     pf_component_enum = dlsym( dll_handle, "OMX_ComponentNameEnum" );
     pf_get_roles_of_component = dlsym( dll_handle, "OMX_GetRolesOfComponent" );
+    pf_get_debug_information = dlsym( dll_handle, "OMX_GetDebugInformation" );
     if( !pf_init || !pf_deinit || !pf_get_handle || !pf_free_handle ||
         !pf_component_enum || !pf_get_roles_of_component )
     {

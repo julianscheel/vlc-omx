@@ -32,6 +32,7 @@ OMX_ERRORTYPE (*pf_get_handle) (OMX_HANDLETYPE *, OMX_STRING,
 OMX_ERRORTYPE (*pf_free_handle) (OMX_HANDLETYPE);
 OMX_ERRORTYPE (*pf_component_enum)(OMX_STRING, OMX_U32, OMX_U32);
 OMX_ERRORTYPE (*pf_get_roles_of_component)(OMX_STRING, OMX_U32 *, OMX_U8 **);
+OMX_ERRORTYPE (*pf_get_debug_information)(OMX_STRING debugInfo, OMX_S32 *pLen);
 
 int InitOmxCore(vlc_object_t *p_this);
 void DeinitOmxCore(void);
