@@ -403,7 +403,10 @@ static int LockSurface(picture_t *picture)
     vout_display_sys_t *p_sys = picsys->sys;
     OMX_BUFFERHEADERTYPE *p_buffer;
 
-    OMX_FIFO_GET(&p_sys->port.fifo, p_buffer);
+    OMX_FIFO_GET_TIMEOUT(&p_sys->port.fifo, p_buffer, 2000);
+    if (p_buffer == NULL)
+        return VLC_EGENERIC;
+
     for (int i = 0; i < 3; i++) {
         picture->p[i].p_pixels = p_buffer->pBuffer;
         picture->p[i].i_pitch = p_sys->port.definition.format.video.nStride;
