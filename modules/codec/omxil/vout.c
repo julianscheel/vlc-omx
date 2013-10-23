@@ -111,8 +111,7 @@ static OMX_ERRORTYPE OmxEmptyBufferDone(OMX_HANDLETYPE omx_handle,
     msg_Dbg(vd, "OmxEmptyBufferDone %p, %p", omx_header, omx_header->pBuffer);
 #endif
 
-    OMX_FIFO_PUT(&p_sys->port.fifo, omx_header);
-
+    picture_Release(omx_header->pAppPrivate);
     return OMX_ErrorNone;
 }
 
@@ -431,11 +430,7 @@ static void UnlockSurface(picture_t *picture)
     picture_sys_t *picsys = picture->p_sys;
     vout_display_sys_t *p_sys = picsys->sys;
     OMX_BUFFERHEADERTYPE *p_buffer = picsys->buf;
-
-    if (!p_buffer->nFilledLen)
-        OMX_FIFO_PUT(&p_sys->port.fifo, p_buffer);
-    else
-        OMX_EmptyThisBuffer(p_sys->omx_handle, p_buffer);
+    OMX_FIFO_PUT(&p_sys->port.fifo, p_buffer);
 }
 
 static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpicture)
@@ -448,10 +443,9 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
 
     p_buffer->nFilledLen = 3*p_sys->port.definition.format.video.nStride*p_sys->port.definition.format.video.nSliceHeight/2;
     p_buffer->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
+    p_buffer->pAppPrivate = picture;
 
-    /* refcount lowers to 0, and pool_cfg.unlock is called */
-
-    picture_Release(picture);
+    OMX_EmptyThisBuffer(p_sys->omx_handle, p_buffer);
 }
 
 static int Control(vout_display_t *vd, int query, va_list args)
