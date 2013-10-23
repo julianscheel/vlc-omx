@@ -33,10 +33,15 @@
 #include "omxil_core.h"
 #include "OMX_Broadcom.h"
 
+#ifdef RPI_OMX
+#include <dlfcn.h>
+#include <bcm_host.h>
+#endif
+
 #define ALIGN(x, y) (((x) + ((y) - 1)) & ~((y) - 1))
 #define SCHEDULER_BUFFERED_PICTURES 4
 
-/* Defined in the broadcom version of OMX_Index.h */
+// Defined in the broadcom version of OMX_Index.h
 #define OMX_IndexConfigDisplayRegion 0x7f000010
 #define OMX_IndexConfigLatencyTarget 0x7f0000a5
 
@@ -133,6 +138,46 @@ struct vout_display_sys_t {
     OmxPort port;
     mtime_t cur_ts;
     mtime_t musecs_per_frame;
+
+#ifdef RPI_OMX
+    void* dpx_lib;
+    DISPMANX_DISPLAY_HANDLE_T (*vc_dispmanx_display_open)(uint32_t);
+    int (*vc_dispmanx_display_close)(DISPMANX_DISPLAY_HANDLE_T);
+
+    DISPMANX_RESOURCE_HANDLE_T (*vc_dispmanx_resource_create)(VC_IMAGE_TYPE_T, uint32_t, uint32_t, uint32_t*);
+    int (*vc_dispmanx_resource_delete)(DISPMANX_RESOURCE_HANDLE_T);
+
+    DISPMANX_ELEMENT_HANDLE_T (*vc_dispmanx_element_add)(DISPMANX_UPDATE_HANDLE_T, DISPMANX_DISPLAY_HANDLE_T,
+            int32_t, const VC_RECT_T*, DISPMANX_RESOURCE_HANDLE_T,
+            const VC_RECT_T*, DISPMANX_PROTECTION_T, 
+            VC_DISPMANX_ALPHA_T*,
+            DISPMANX_CLAMP_T*, DISPMANX_TRANSFORM_T);
+
+    int (*vc_dispmanx_rect_set)(VC_RECT_T*, uint32_t, uint32_t, uint32_t, uint32_t);
+    int (*vc_dispmanx_element_remove)(DISPMANX_UPDATE_HANDLE_T, DISPMANX_ELEMENT_HANDLE_T);
+    int (*vc_dispmanx_resource_write_data)(DISPMANX_RESOURCE_HANDLE_T, VC_IMAGE_TYPE_T, int, void*, const VC_RECT_T*);
+    int (*vc_dispmanx_element_modified)(DISPMANX_UPDATE_HANDLE_T, DISPMANX_ELEMENT_HANDLE_T, const VC_RECT_T*);
+    int (*vc_dispmanx_element_change_source)(DISPMANX_UPDATE_HANDLE_T, DISPMANX_ELEMENT_HANDLE_T, DISPMANX_RESOURCE_HANDLE_T);
+    int (*vc_dispmanx_display_get_info)(DISPMANX_DISPLAY_HANDLE_T, DISPMANX_MODEINFO_T*);
+    DISPMANX_UPDATE_HANDLE_T (*vc_dispmanx_update_start)(int32_t);
+    int (*vc_dispmanx_update_submit_sync)(DISPMANX_UPDATE_HANDLE_T);
+
+    int dpx_device;
+    DISPMANX_DISPLAY_HANDLE_T dpx_handle;
+    int dpx_width;
+    int dpx_height;
+    DISPMANX_RESOURCE_HANDLE_T dpx_resource[2];
+    int dpx_current_resource;
+    uint32_t dpx_image_handle;
+    VC_IMAGE_TYPE_T dpx_type;
+
+    VC_DISPMANX_ALPHA_T dpx_alpha;
+    DISPMANX_ELEMENT_HANDLE_T dpx_element;
+
+    VC_RECT_T dpx_bmp_rect;
+    VC_RECT_T dpx_src_rect;
+    VC_RECT_T dpx_dst_rect;
+#endif
 };
 
 struct picture_sys_t {
@@ -366,6 +411,9 @@ static int Open(vlc_object_t *p_this)
     OMX_PARAM_PORTDEFINITIONTYPE *def;
     OMX_PORT_PARAM_TYPE param;
     OMX_ERRORTYPE omx_error;
+#ifdef RPI_OMX
+    DISPMANX_MODEINFO_T mode;
+#endif
 
     OMX_INIT_STRUCTURE(param);
 
@@ -700,6 +748,46 @@ static int Open(vlc_object_t *p_this)
         goto error;
     }
 
+#ifdef RPI_OMX
+    p_sys->dpx_lib = dlopen("libbcm_host.so", RTLD_NOW);
+    if (!p_sys)
+        msg_Err(vd, "Could not load libbcm_host.so");
+
+    p_sys->vc_dispmanx_display_open = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_display_open");
+    p_sys->vc_dispmanx_display_close = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_display_close");
+    p_sys->vc_dispmanx_resource_create = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_resource_create");
+    p_sys->vc_dispmanx_resource_delete = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_resource_delete");
+    p_sys->vc_dispmanx_element_add = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_element_add");
+    p_sys->vc_dispmanx_element_remove = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_element_remove");
+    p_sys->vc_dispmanx_update_start = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_update_start");
+    p_sys->vc_dispmanx_update_submit_sync = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_update_submit_sync");
+    p_sys->vc_dispmanx_rect_set = dlsym(p_sys->dpx_lib, "vc_dispmanx_rect_set");
+    p_sys->vc_dispmanx_resource_write_data = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_resource_write_data");
+    p_sys->vc_dispmanx_element_modified = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_element_modified");
+    p_sys->vc_dispmanx_element_change_source = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_element_change_source");
+    p_sys->vc_dispmanx_display_get_info = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_display_get_info");
+
+    p_sys->dpx_handle = p_sys->vc_dispmanx_display_open(p_sys->dpx_device);
+    p_sys->vc_dispmanx_display_get_info(p_sys->dpx_handle, &mode);
+    p_sys->dpx_width = mode.width;
+    p_sys->dpx_height = mode.height;
+    p_sys->dpx_type = VC_IMAGE_RGBA32;
+    p_sys->dpx_alpha.flags = DISPMANX_FLAGS_ALPHA_FIXED_ALL_PIXELS;
+    p_sys->dpx_alpha.opacity = 255;
+#endif
+
     /* Fix initial state */
     vout_display_SendEventFullscreen(vd, true);
 
@@ -722,6 +810,21 @@ static void Close(vlc_object_t *p_this)
     OMX_ERRORTYPE omx_error;
     OMX_STATETYPE state;
     OMX_TIME_CONFIG_CLOCKSTATETYPE clock_state;
+
+#ifdef RPI_OMX
+    if (p_sys->dpx_element) {
+        DISPMANX_UPDATE_HANDLE_T update = p_sys->vc_dispmanx_update_start(10);
+        p_sys->vc_dispmanx_element_remove(update, p_sys->dpx_element);
+        p_sys->vc_dispmanx_update_submit_sync(update);
+    }
+
+    if (p_sys->dpx_resource[0]) {
+        p_sys->vc_dispmanx_resource_delete(p_sys->dpx_resource[0]);
+        p_sys->vc_dispmanx_resource_delete(p_sys->dpx_resource[1]);
+    }
+
+    p_sys->vc_dispmanx_display_close(p_sys->dpx_handle);
+#endif
 
     OMX_INIT_STRUCTURE(clock_state);
     OMX_GetConfig(p_sys->clock_handle, OMX_IndexConfigTimeClockState, &clock_state);
@@ -875,6 +978,72 @@ static void UnlockSurface(picture_t *picture)
     OMX_FIFO_PUT(&p_sys->port.fifo, p_buffer);
 }
 
+#ifdef RPI_OMX
+static void DisplaySubpicture(vout_display_sys_t *p_sys, subpicture_t *subpicture) {
+    DISPMANX_UPDATE_HANDLE_T update;
+    if (subpicture) {
+        subpicture_region_t *region = subpicture->p_region;
+        picture_t *subpic;
+        int next_resource;
+        video_frame_format_t *subpic_fmt;
+
+        if (!region)
+            return;
+
+        subpic = region->p_picture;
+        if (!subpic)
+            return;
+
+        subpic_fmt = &subpic->format;
+
+        if (!p_sys->dpx_resource[0]) {
+            p_sys->vc_dispmanx_rect_set(&p_sys->dpx_bmp_rect, 0, 0,
+                    subpic_fmt->i_width, subpic_fmt->i_height);
+            p_sys->vc_dispmanx_rect_set(&p_sys->dpx_src_rect, 0, 0,
+                    subpic_fmt->i_width << 16, subpic_fmt->i_height << 16);
+            p_sys->vc_dispmanx_rect_set(&p_sys->dpx_dst_rect, 0, 0,
+                    p_sys->dpx_width, p_sys->dpx_height);
+
+            for(int i = 0; i < 2; ++i) {
+                p_sys->dpx_resource[i] =
+                    p_sys->vc_dispmanx_resource_create(p_sys->dpx_type,
+                            p_sys->dpx_bmp_rect.width,
+                            p_sys->dpx_bmp_rect.height,
+                            &p_sys->dpx_image_handle);
+            }
+
+            p_sys->dpx_current_resource = 0;
+        }
+
+        if (!p_sys->dpx_element) {
+            update = p_sys->vc_dispmanx_update_start(10);
+            p_sys->dpx_element = p_sys->vc_dispmanx_element_add(update,
+                    p_sys->dpx_handle, 2000, &p_sys->dpx_dst_rect,
+                    p_sys->dpx_resource[0], &p_sys->dpx_src_rect,
+                    DISPMANX_PROTECTION_NONE, &p_sys->dpx_alpha, NULL,
+                    VC_IMAGE_ROT0);
+            p_sys->vc_dispmanx_update_submit_sync(update);
+        }
+
+        next_resource = 1 - p_sys->dpx_current_resource;
+        p_sys->vc_dispmanx_resource_write_data(p_sys->dpx_resource[next_resource],
+                p_sys->dpx_type, subpic->p[0].i_pitch, subpic->p[0].p_pixels,
+                &p_sys->dpx_bmp_rect);
+
+        update = p_sys->vc_dispmanx_update_start(10);
+        p_sys->vc_dispmanx_element_change_source(update, p_sys->dpx_element,
+                p_sys->dpx_resource[next_resource]);
+        p_sys->vc_dispmanx_update_submit_sync(update);
+        p_sys->dpx_current_resource = next_resource;
+    } else if (p_sys->dpx_element) {
+        update = p_sys->vc_dispmanx_update_start(10);
+        p_sys->vc_dispmanx_element_remove(update, p_sys->dpx_element);
+        p_sys->vc_dispmanx_update_submit_sync(update);
+        p_sys->dpx_element = 0;
+    }
+}
+#endif
+
 static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpicture)
 {
     VLC_UNUSED(vd);
@@ -926,10 +1095,11 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
         p_sys->cur_ts = picture->date;
     } else {
         picture_Release(picture);
+        if (subpicture)
+            subpicture_Delete(subpicture);
     }
 
-    if (subpicture)
-        subpicture_Delete(subpicture);
+    DisplaySubpicture(p_sys, subpicture);
 }
 
 static int Control(vout_display_t *vd, int query, va_list args)
