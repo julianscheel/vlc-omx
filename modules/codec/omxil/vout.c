@@ -95,7 +95,7 @@ static OMX_ERRORTYPE OmxEventHandler(OMX_HANDLETYPE omx_handle,
     vout_display_sys_t *p_sys = vd->sys;
     (void)omx_handle;
 
-    PrintOmxEvent((vlc_object_t *) vd, event, data_1, data_2, event_data);
+    PrintOmxEvent((vlc_object_t *) vd, "iv_renderer", event, data_1, data_2, event_data);
     PostOmxEvent(&p_sys->event_queue, event, data_1, data_2, event_data);
     return OMX_ErrorNone;
 }
