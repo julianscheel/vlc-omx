@@ -51,6 +51,7 @@
 #define OMX_IndexConfigRequestCallback 0x7f000063
 #define OMX_IndexParamBrcmPixelAspectRatio 0x7f00004d
 #define OMX_IndexParamBrcmVideoDecodeErrorConcealment 0x7f000080
+#define OMX_IndexConfigCommonInterlace 0x7f00002f
 
 /* Defined in the broadcom version of OMX_Core.h */
 #define OMX_EventParamOrConfigChanged 0x7F000001
@@ -405,8 +406,8 @@ static OMX_ERRORTYPE GetPortDefinition(decoder_t *p_dec, OmxPort *p_port,
         p_fmt->video.i_visible_width = def->format.video.nFrameWidth;
         p_fmt->video.i_height = def->format.video.nFrameHeight;
         p_fmt->video.i_visible_height = def->format.video.nFrameHeight;
-        p_fmt->video.i_frame_rate = p_dec->fmt_in.video.i_frame_rate;
-        p_fmt->video.i_frame_rate_base = p_dec->fmt_in.video.i_frame_rate_base;
+        p_fmt->video.i_frame_rate = def->format.video.xFramerate;
+        p_fmt->video.i_frame_rate_base = 65536;
 
         OMX_INIT_STRUCTURE(crop_rect);
         crop_rect.nPortIndex = def->nPortIndex;
@@ -1289,8 +1290,21 @@ static picture_t *DecodeVideo( decoder_t *p_dec, block_t **pp_block )
                                    p_sys->out.i_frame_stride_chroma_div, NULL);
             }
 
-            if (p_pic)
+            if (p_pic) {
                 p_pic->date = FromOmxTicks(p_header->nTimeStamp);
+
+#ifdef RPI_OMX
+                /* Determine if frames are interlaced */
+                OMX_CONFIG_INTERLACETYPE interlace;
+                OMX_INIT_STRUCTURE(interlace);
+                interlace.nPortIndex = p_sys->out.i_port_index;
+                omx_error = OMX_GetConfig(p_sys->omx_handle, OMX_IndexConfigCommonInterlace, &interlace);
+                if (omx_error == OMX_ErrorNone) {
+                    p_pic->b_progressive = interlace.eMode == OMX_InterlaceProgressive;
+                    p_pic->b_top_field_first = interlace.eMode == OMX_InterlaceFieldsInterleavedUpperFirst;
+                }
+#endif
+            }
             p_header->nFilledLen = 0;
             p_header->pAppPrivate = 0;
         }
