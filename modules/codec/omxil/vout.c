@@ -396,11 +396,19 @@ static OMX_ERRORTYPE transition_to_state(OmxEventQueue *queue, OMX_HANDLETYPE *h
 }
 
 static void set_misecs_per_frame(vout_display_sys_t *p_sys, video_format_t *fmt) {
-    if (fmt && (fmt->i_frame_rate_base > 0) && (fmt->i_frame_rate > 0)) {
-        p_sys->musecs_per_frame = (mtime_t)1000000 * fmt->i_frame_rate_base / fmt->i_frame_rate;
-    } else {
+    /* FIXME: This is seriously hacky... */
+    if(!fmt)
         p_sys->musecs_per_frame = 0;
-    }
+    else if(fmt->i_height == 720)
+        p_sys->musecs_per_frame = 20000;
+    else
+        p_sys->musecs_per_frame = 40000;
+
+    /*if (fmt && (fmt->i_frame_rate_base > 0) && (fmt->i_frame_rate > 0)) {*/
+        /*p_sys->musecs_per_frame = (mtime_t)1000000 * fmt->i_frame_rate_base / fmt->i_frame_rate;*/
+    /*} else {*/
+        /*p_sys->musecs_per_frame = 0;*/
+    /*}*/
 }
 
 static int Open(vlc_object_t *p_this)
@@ -432,6 +440,7 @@ static int Open(vlc_object_t *p_this)
     vd->sys = p_sys;
 
     p_sys->deinterlace_enabled = vd->fmt.i_height != 720;
+
     set_misecs_per_frame(p_sys, &vd->fmt);
 
     /* Initialize image_fx component */
@@ -534,24 +543,27 @@ static int Open(vlc_object_t *p_this)
     CHECK_ERROR(omx_error, "Wait for OMX_CommandPortEnable %d failed (%x: %s)",
             p_sys->clock_port_out, omx_error, ErrorToString(omx_error));
 
-    OMX_TIME_CONFIG_CLOCKSTATETYPE clock_state;
-    OMX_INIT_STRUCTURE(clock_state);
-    omx_error = OMX_GetParameter(p_sys->clock_handle, OMX_IndexConfigTimeClockState, &clock_state);
-    CHECK_ERROR(omx_error, "OMX_IndexConfigTimeClockState failed (%x: %s)",
-            omx_error, ErrorToString(omx_error));
-
-    clock_state.eState = OMX_TIME_ClockStateWaitingForStartTime;
-    clock_state.nWaitMask = OMX_CLOCKPORT0;
-    /*clock_state.nOffset = ToOmxTicks(...) */
-    omx_error = OMX_SetParameter(p_sys->clock_handle, OMX_IndexConfigTimeClockState, &clock_state);
-    CHECK_ERROR(omx_error, "OMX_IndexConfigTimeClockState failed (%x: %s)",
-            omx_error, ErrorToString(omx_error));
-
     OMX_TIME_CONFIG_ACTIVEREFCLOCKTYPE clock_out_type;
     OMX_INIT_STRUCTURE(clock_out_type);
     clock_out_type.eClock = OMX_TIME_RefClockVideo;
     omx_error = OMX_SetConfig(p_sys->clock_handle, OMX_IndexConfigTimeActiveRefClock, &clock_out_type);
     CHECK_ERROR(omx_error, "OMX_IndexConfigTimeActiveRefClock failed (%x: %s)",
+            omx_error, ErrorToString(omx_error));
+
+    OMX_TIME_CONFIG_CLOCKSTATETYPE clock_state;
+    OMX_INIT_STRUCTURE(clock_state);
+    clock_state.eState = OMX_TIME_ClockStateRunning;
+    omx_error = OMX_SetConfig(p_sys->clock_handle, OMX_IndexConfigTimeClockState, &clock_state);
+    CHECK_ERROR(omx_error, "OMX_IndexConfigTimeClockState failed (%x: %s)",
+            omx_error, ErrorToString(omx_error));
+
+    OMX_TIME_CONFIG_TIMESTAMPTYPE clock_init_ts;
+    OMX_INIT_STRUCTURE(clock_init_ts);
+    mtime_t clock_init_ts_now = mdate() - SCHEDULER_BUFFERED_PICTURES * p_sys->musecs_per_frame;
+    clock_init_ts.nPortIndex = p_sys->clock_port_out;
+    clock_init_ts.nTimestamp = ToOmxTicks(clock_init_ts_now);
+    omx_error = OMX_SetConfig(p_sys->clock_handle, OMX_IndexConfigTimeCurrentVideoReference, &clock_init_ts);
+    CHECK_ERROR(omx_error, "OMX_IndexConfigTimeCurrentVideoReference failed (%x: %s)",
             omx_error, ErrorToString(omx_error));
 
     OMX_CONFIG_LATENCYTARGETTYPE latency;
@@ -1063,35 +1075,6 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
 
     mtime_t now = mdate();
     p_buffer->nTimeStamp = ToOmxTicks(now);
-
-    if (!p_sys->clock_initialized) {
-        now -= SCHEDULER_BUFFERED_PICTURES * p_sys->musecs_per_frame;
-        OMX_INIT_STRUCTURE(clock_state);
-        omx_error = OMX_GetConfig(p_sys->clock_handle, OMX_IndexConfigTimeClockState, &clock_state);
-        if (omx_error != OMX_ErrorNone) {
-            msg_Err(vd, "OMX_IndexConfigTimeClockState failed (%x: %s)", omx_error,
-                    ErrorToString(omx_error));
-        }
-
-        OMX_INIT_STRUCTURE(clock_ts);
-        clock_ts.nPortIndex = p_sys->clock_port_out;
-        if (clock_state.eState == OMX_TIME_ClockStateWaitingForStartTime) {
-            clock_ts.nTimestamp = ToOmxTicks(now);
-            omx_error = OMX_SetConfig(p_sys->clock_handle, OMX_IndexConfigTimeClientStartTime, &clock_ts);
-            if (omx_error != OMX_ErrorNone) {
-                msg_Err(vd, "OMX_IndexConfigTimeClientStartTime failed (%x: %s)",
-                        omx_error, ErrorToString(omx_error));
-            }
-            p_sys->clock_initialized = true;
-        }
-
-        clock_ts.nTimestamp = ToOmxTicks(now);
-        omx_error = OMX_SetConfig(p_sys->clock_handle, OMX_IndexConfigTimeCurrentVideoReference, &clock_ts);
-        if (omx_error != OMX_ErrorNone) {
-            msg_Err(vd, "OMX_IndexConfigTimeCurrentVideoReference failed (%x: %s)",
-                    omx_error, ErrorToString(omx_error));
-        }
-    }
 
     if (picture->date > p_sys->cur_ts) {
         p_buffer->nFilledLen = 3*p_sys->port.definition.format.video.nStride*p_sys->port.definition.format.video.nSliceHeight/2;
