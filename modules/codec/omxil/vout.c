@@ -1089,7 +1089,7 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
         }
     }
 
-    if (picture->date != p_sys->cur_ts) {
+    if (picture->date > p_sys->cur_ts) {
         p_buffer->nFilledLen = 3*p_sys->port.definition.format.video.nStride*p_sys->port.definition.format.video.nSliceHeight/2;
         p_buffer->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
         p_buffer->pAppPrivate = picture;
