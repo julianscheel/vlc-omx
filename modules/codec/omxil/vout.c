@@ -987,12 +987,16 @@ static void DisplaySubpicture(vout_display_sys_t *p_sys, subpicture_t *subpictur
         int next_resource;
         video_frame_format_t *subpic_fmt;
 
-        if (!region)
+        if (!region) {
+            subpicture_Delete(subpicture);
             return;
+        }
 
         subpic = region->p_picture;
-        if (!subpic)
+        if (!subpic) {
+            subpicture_Delete(subpicture);
             return;
+        }
 
         subpic_fmt = &subpic->format;
 
