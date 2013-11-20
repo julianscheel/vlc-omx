@@ -1103,8 +1103,6 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
         p_sys->cur_ts = picture->date;
     } else {
         picture_Release(picture);
-        if (subpicture)
-            subpicture_Delete(subpicture);
     }
 
     DisplaySubpicture(p_sys, subpicture);
