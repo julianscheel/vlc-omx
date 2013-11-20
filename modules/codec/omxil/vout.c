@@ -1035,6 +1035,8 @@ static void DisplaySubpicture(vout_display_sys_t *p_sys, subpicture_t *subpictur
                 p_sys->dpx_resource[next_resource]);
         p_sys->vc_dispmanx_update_submit_sync(update);
         p_sys->dpx_current_resource = next_resource;
+
+        subpicture_Delete(subpicture);
     } else if (p_sys->dpx_element) {
         update = p_sys->vc_dispmanx_update_start(10);
         p_sys->vc_dispmanx_element_remove(update, p_sys->dpx_element);
