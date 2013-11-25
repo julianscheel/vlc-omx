@@ -1248,6 +1248,13 @@ static picture_t *DecodeVideo( decoder_t *p_dec, block_t **pp_block )
         return NULL;
     }
 
+    if (!(p_block->i_flags & BLOCK_FLAG_PREROLL) &&
+            p_sys->end_of_preroll_pts == 0) {
+        p_sys->end_of_preroll_pts = p_block->i_pts;
+    } else if (p_block->i_flags & BLOCK_FLAG_PREROLL) {
+        p_sys->end_of_preroll_pts = 0;
+    }
+
     /* Use the aspect ratio provided by the input (ie read from packetizer).
      * The broadcom OMX implementation has a vendor-specific extension for
      * retrieving aspect ratio directly from the decoder, which we use.
@@ -1415,6 +1422,15 @@ reconfig:
         }
     }
 
+    /* If picture is part of prerolling process do not send it to vout, but
+     * discard it. */
+    if (p_pic && (p_sys->end_of_preroll_pts == 0 ||
+            p_sys->end_of_preroll_pts > p_pic->date)) {
+        picture_Release(p_pic);
+        p_pic = NULL;
+    } else if (p_sys->end_of_preroll_pts > 0 && p_pic != NULL) {
+        p_sys->end_of_preroll_pts = -1;
+    }
     return p_pic;
 }
 
