@@ -319,6 +319,11 @@ input_event_changed( vlc_object_t * p_this, char const * psz_cmd,
         event.u.media_player_vout.new_count = i_vout;
         libvlc_event_send( p_mi->p_event_manager, &event );
     }
+    else if( newval.i_int == INPUT_EVENT_TELETEXT )
+    {
+        event.type = libvlc_MediaPlayerTeletextChanged;
+        libvlc_event_send( p_mi->p_event_manager, &event );
+    }
 
     return VLC_SUCCESS;
 }
@@ -507,6 +512,7 @@ libvlc_media_player_new( libvlc_instance_t *instance )
     register_event(mp, PausableChanged);
 
     register_event(mp, Vout);
+    register_event(mp, TeletextChanged);
 
     /* Snapshot initialization */
     register_event(mp, SnapshotTaken);
