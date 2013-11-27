@@ -136,7 +136,6 @@ struct vout_display_sys_t {
     OMX_U32 renderer_port_in;
 
     OmxPort port;
-    mtime_t cur_ts;
     mtime_t musecs_per_frame;
 
 #ifdef RPI_OMX
@@ -1076,20 +1075,14 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
     mtime_t now = mdate();
     p_buffer->nTimeStamp = ToOmxTicks(now);
 
-    if (picture->date > p_sys->cur_ts) {
-        p_buffer->nFilledLen = 3*p_sys->port.definition.format.video.nStride*p_sys->port.definition.format.video.nSliceHeight/2;
-        p_buffer->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
-        p_buffer->pAppPrivate = picture;
-        omx_error = OMX_EmptyThisBuffer(p_sys->port.omx_handle, p_buffer);
-        if (omx_error != OMX_ErrorNone) {
-                msg_Err(vd, "OMX_EmptyThisBuffer failed (%x: %s)",
-                        omx_error, ErrorToString(omx_error));
-                picture_Release(picture);
-        }
-
-        p_sys->cur_ts = picture->date;
-    } else {
-        picture_Release(picture);
+    p_buffer->nFilledLen = 3*p_sys->port.definition.format.video.nStride*p_sys->port.definition.format.video.nSliceHeight/2;
+    p_buffer->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
+    p_buffer->pAppPrivate = picture;
+    omx_error = OMX_EmptyThisBuffer(p_sys->port.omx_handle, p_buffer);
+    if (omx_error != OMX_ErrorNone) {
+            msg_Err(vd, "OMX_EmptyThisBuffer failed (%x: %s)",
+                    omx_error, ErrorToString(omx_error));
+            picture_Release(picture);
     }
 
     DisplaySubpicture(p_sys, subpicture);
