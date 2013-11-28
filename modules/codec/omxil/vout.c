@@ -86,12 +86,17 @@ void print_omx_debug_info(vlc_object_t *vlc_obj) {
 static int  Open (vlc_object_t *);
 static void Close(vlc_object_t *);
 
+#define OMX_CROP_NAME "omx-vout-crop"
+#define OMX_CROP_TEXT N_("OMX Video output cropping")
+#define OMX_CROP_LONGTEXT N_("Crops the specified fraction from images before outputting them")
+
 vlc_module_begin()
     set_category(CAT_VIDEO)
     set_subcategory(SUBCAT_VIDEO_VOUT)
     set_shortname("omxil_vout")
     set_description(N_("OpenMAX IL video output"))
     set_capability("vout display", 0)
+    add_integer_with_range(OMX_CROP_NAME, 4, 0, 10, OMX_CROP_TEXT, OMX_CROP_LONGTEXT, false)
     set_callbacks(Open, Close)
 vlc_module_end()
 
@@ -250,6 +255,17 @@ static OMX_ERRORTYPE UpdateDisplaySize(vout_display_t *vd, vout_display_cfg_t *c
     config_display.set = OMX_DISPLAY_SET_PIXEL;
     config_display.pixel_x = cfg->display.width  * vd->fmt.i_height;
     config_display.pixel_y = cfg->display.height * vd->fmt.i_width;
+
+    if (p_sys->deinterlace_enabled) {
+        OMX_DISPLAYRECTTYPE crop;
+        float fraction = var_InheritInteger(vd, OMX_CROP_NAME) / 100.0f;
+        config_display.set |= OMX_DISPLAY_SET_SRC_RECT;
+        config_display.src_rect.x_offset = (OMX_S32)(0.5f * fraction * vd->fmt.i_width);
+        config_display.src_rect.y_offset = (OMX_S32)(0.5f * fraction * vd->fmt.i_height);
+        config_display.src_rect.width = vd->fmt.i_width - 2 * config_display.src_rect.x_offset;
+        config_display.src_rect.height = vd->fmt.i_height - 2 * config_display.src_rect.y_offset;
+    }
+
     return OMX_SetConfig(vd->sys->renderer_handle, OMX_IndexConfigDisplayRegion, &config_display);
 }
 
