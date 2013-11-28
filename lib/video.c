@@ -464,8 +464,9 @@ void libvlc_video_set_teletext( libvlc_media_player_t *p_mi, int i_page )
         return;
     }
 
-    telx = var_GetInteger( p_input_thread, "teletext-es" );
-    if( input_GetEsObjects( p_input_thread, telx, &p_zvbi, NULL, NULL )
+    telx = var_GetInteger( p_input_thread, "spu-es" );
+    if( telx > -1 &&
+        input_GetEsObjects( p_input_thread, telx, &p_zvbi, NULL, NULL )
         == VLC_SUCCESS )
     {
         var_SetInteger( p_zvbi, "vbi-page", i_page );
