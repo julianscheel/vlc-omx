@@ -115,6 +115,20 @@ static const vlc_fourcc_t rpi_subpicture_chromas[] = {
 };
 #endif
 
+#ifdef RPI_OMX
+struct dpx_region_t {
+    DISPMANX_ELEMENT_HANDLE_T element;
+    DISPMANX_RESOURCE_HANDLE_T resource;
+    VC_RECT_T bmp_rect;
+    VC_RECT_T src_rect;
+    VC_RECT_T dst_rect;
+    uint32_t pos_x;
+    uint32_t pos_y;
+    struct dpx_region_t *next;
+    picture_t *pic;
+};
+#endif
+
 /* */
 struct vout_display_sys_t {
     picture_pool_t *pool;
@@ -170,19 +184,52 @@ struct vout_display_sys_t {
     DISPMANX_DISPLAY_HANDLE_T dpx_handle;
     int dpx_width;
     int dpx_height;
-    DISPMANX_RESOURCE_HANDLE_T dpx_resource[2];
-    int dpx_current_resource;
-    uint32_t dpx_image_handle;
+    struct dpx_region_t *dpx_region;
     VC_IMAGE_TYPE_T dpx_type;
-
     VC_DISPMANX_ALPHA_T dpx_alpha;
-    DISPMANX_ELEMENT_HANDLE_T dpx_element;
-
-    VC_RECT_T dpx_bmp_rect;
-    VC_RECT_T dpx_src_rect;
-    VC_RECT_T dpx_dst_rect;
 #endif
 };
+
+#ifdef RPI_OMX
+struct dpx_region_t *dpx_region_new(vout_display_t *vd, DISPMANX_UPDATE_HANDLE_T update, subpicture_t *subpic, subpicture_region_t *region) {
+    vout_display_sys_t *sys = vd->sys;
+    video_format_t *fmt = &region->fmt;
+    struct dpx_region_t *dpx_region = malloc(sizeof(struct dpx_region_t));
+    uint32_t dpx_image_handle;
+
+    float scale = (float)sys->dpx_height / vd->fmt.i_height;
+    uint32_t new_width = (uint32_t)(scale * vd->fmt.i_width);
+    if(new_width > sys->dpx_width)
+        scale = (float)sys->dpx_width / vd->fmt.i_width;
+
+    dpx_region->pos_x = region->i_x;
+    dpx_region->pos_y = region->i_y;
+
+    sys->vc_dispmanx_rect_set(&dpx_region->bmp_rect, 0, 0, fmt->i_visible_width, fmt->i_visible_height);
+    sys->vc_dispmanx_rect_set(&dpx_region->src_rect, 0, 0, fmt->i_visible_width << 16, fmt->i_visible_height << 16);
+    sys->vc_dispmanx_rect_set(&dpx_region->dst_rect, (uint32_t)(scale * dpx_region->pos_x), (uint32_t)(scale * dpx_region->pos_y), (uint32_t)(scale * fmt->i_width), (uint32_t)(scale * fmt->i_height));
+
+    dpx_region->resource = sys->vc_dispmanx_resource_create(sys->dpx_type, dpx_region->bmp_rect.width | (region->p_picture->p[0].i_pitch << 16), dpx_region->bmp_rect.height, &dpx_image_handle);
+
+    sys->vc_dispmanx_resource_write_data(dpx_region->resource, sys->dpx_type, region->p_picture->p[0].i_pitch, region->p_picture->p[0].p_pixels, &dpx_region->bmp_rect);
+    dpx_region->element = sys->vc_dispmanx_element_add(update, sys->dpx_handle, region->p_picture->p[0].i_pitch, &dpx_region->dst_rect, dpx_region->resource, &dpx_region->src_rect, DISPMANX_PROTECTION_NONE, &sys->dpx_alpha, NULL, VC_IMAGE_ROT0);
+    dpx_region->next = NULL;
+    dpx_region->pic = region->p_picture;
+    return dpx_region;
+}
+
+void dpx_region_update(vout_display_sys_t *sys, DISPMANX_UPDATE_HANDLE_T update, struct dpx_region_t *dpx_region, picture_t *pic) {
+    sys->vc_dispmanx_resource_write_data(dpx_region->resource, sys->dpx_type, pic->p[0].i_pitch, pic->p[0].p_pixels, &dpx_region->bmp_rect);
+    sys->vc_dispmanx_element_change_source(update, dpx_region->element, dpx_region->resource);
+    dpx_region->pic = pic;
+}
+
+void dpx_region_delete(vout_display_sys_t *sys, DISPMANX_UPDATE_HANDLE_T update, struct dpx_region_t *dpx_region) {
+    sys->vc_dispmanx_element_remove(update, dpx_region->element);
+    sys->vc_dispmanx_resource_delete(dpx_region->resource);
+    free(dpx_region);
+}
+#endif
 
 struct picture_sys_t {
     OMX_BUFFERHEADERTYPE *buf;
@@ -811,7 +858,7 @@ static int Open(vlc_object_t *p_this)
     p_sys->dpx_width = mode.width;
     p_sys->dpx_height = mode.height;
     p_sys->dpx_type = VC_IMAGE_RGBA32;
-    p_sys->dpx_alpha.flags = DISPMANX_FLAGS_ALPHA_FIXED_ALL_PIXELS;
+    p_sys->dpx_alpha.flags = DISPMANX_FLAGS_ALPHA_FROM_SOURCE;
     p_sys->dpx_alpha.opacity = 255;
 #endif
 
@@ -839,16 +886,14 @@ static void Close(vlc_object_t *p_this)
     OMX_TIME_CONFIG_CLOCKSTATETYPE clock_state;
 
 #ifdef RPI_OMX
-    if (p_sys->dpx_element) {
-        DISPMANX_UPDATE_HANDLE_T update = p_sys->vc_dispmanx_update_start(10);
-        p_sys->vc_dispmanx_element_remove(update, p_sys->dpx_element);
-        p_sys->vc_dispmanx_update_submit_sync(update);
+    DISPMANX_UPDATE_HANDLE_T update = p_sys->vc_dispmanx_update_start(10);
+    struct dpx_region_t *dpx_region = p_sys->dpx_region;
+    while(dpx_region) {
+        struct dpx_region_t *dpx_region_next = dpx_region->next;
+        dpx_region_delete(p_sys, update, dpx_region);
+        dpx_region = dpx_region_next;
     }
-
-    if (p_sys->dpx_resource[0]) {
-        p_sys->vc_dispmanx_resource_delete(p_sys->dpx_resource[0]);
-        p_sys->vc_dispmanx_resource_delete(p_sys->dpx_resource[1]);
-    }
+    p_sys->vc_dispmanx_update_submit_sync(update);
 
     p_sys->vc_dispmanx_display_close(p_sys->dpx_handle);
 #endif
@@ -1006,80 +1051,64 @@ static void UnlockSurface(picture_t *picture)
 }
 
 #ifdef RPI_OMX
-static void DisplaySubpicture(vout_display_sys_t *p_sys, subpicture_t *subpicture) {
-    DISPMANX_UPDATE_HANDLE_T update;
-    if (subpicture) {
+static void DisplaySubpicture(vout_display_t *vd, subpicture_t *subpicture) {
+    vout_display_sys_t *sys = vd->sys;
+    struct dpx_region_t **dpx_region = &sys->dpx_region;
+    struct dpx_region_t *unused_dpx_region;
+    DISPMANX_UPDATE_HANDLE_T update = NULL;
+
+    if(subpicture) {
         subpicture_region_t *region = subpicture->p_region;
-        picture_t *subpic;
-        int next_resource;
-        video_frame_format_t *subpic_fmt;
+        while(region) {
+            picture_t *pic = region->p_picture;
+            video_format_t *fmt = &region->fmt;
+            uint32_t dpx_image_handle;
 
-        if (!region) {
-            subpicture_Delete(subpicture);
-            return;
-        }
-
-        subpic = region->p_picture;
-        if (!subpic) {
-            subpicture_Delete(subpicture);
-            return;
-        }
-
-        subpic_fmt = &subpic->format;
-
-        if (!p_sys->dpx_resource[0]) {
-            p_sys->vc_dispmanx_rect_set(&p_sys->dpx_bmp_rect, 0, 0,
-                    subpic_fmt->i_width, subpic_fmt->i_height);
-            p_sys->vc_dispmanx_rect_set(&p_sys->dpx_src_rect, 0, 0,
-                    subpic_fmt->i_width << 16, subpic_fmt->i_height << 16);
-            p_sys->vc_dispmanx_rect_set(&p_sys->dpx_dst_rect, 0, 0,
-                    p_sys->dpx_width, p_sys->dpx_height);
-
-            for(int i = 0; i < 2; ++i) {
-                p_sys->dpx_resource[i] =
-                    p_sys->vc_dispmanx_resource_create(p_sys->dpx_type,
-                            p_sys->dpx_bmp_rect.width,
-                            p_sys->dpx_bmp_rect.height,
-                            &p_sys->dpx_image_handle);
+            if(!*dpx_region) {
+                if(!update)
+                    update = sys->vc_dispmanx_update_start(10);
+                *dpx_region = dpx_region_new(vd, update, subpicture, region);
+            }
+            else if(((*dpx_region)->bmp_rect.width != fmt->i_visible_width) ||
+                    ((*dpx_region)->bmp_rect.height != fmt->i_visible_height) ||
+                    ((*dpx_region)->pos_x != region->i_x) ||
+                    ((*dpx_region)->pos_y != region->i_y)) {
+                struct dpx_region_t *dpx_region_next = (*dpx_region)->next;
+                if(!update)
+                    update = sys->vc_dispmanx_update_start(10);
+                dpx_region_delete(sys, update, *dpx_region);
+                *dpx_region = dpx_region_new(vd, update, subpicture, region);
+                (*dpx_region)->next = dpx_region_next;
+            }
+            else if((*dpx_region)->pic != pic) {
+                if(!update)
+                    update = sys->vc_dispmanx_update_start(10);
+                dpx_region_update(sys, update, *dpx_region, pic);
             }
 
-            p_sys->dpx_current_resource = 0;
+            dpx_region = &(*dpx_region)->next;
+            region = region->p_next;
         }
-
-        if (!p_sys->dpx_element) {
-            update = p_sys->vc_dispmanx_update_start(10);
-            p_sys->dpx_element = p_sys->vc_dispmanx_element_add(update,
-                    p_sys->dpx_handle, 2000, &p_sys->dpx_dst_rect,
-                    p_sys->dpx_resource[0], &p_sys->dpx_src_rect,
-                    DISPMANX_PROTECTION_NONE, &p_sys->dpx_alpha, NULL,
-                    VC_IMAGE_ROT0);
-            p_sys->vc_dispmanx_update_submit_sync(update);
-        }
-
-        next_resource = 1 - p_sys->dpx_current_resource;
-        p_sys->vc_dispmanx_resource_write_data(p_sys->dpx_resource[next_resource],
-                p_sys->dpx_type, subpic->p[0].i_pitch, subpic->p[0].p_pixels,
-                &p_sys->dpx_bmp_rect);
-
-        update = p_sys->vc_dispmanx_update_start(10);
-        p_sys->vc_dispmanx_element_change_source(update, p_sys->dpx_element,
-                p_sys->dpx_resource[next_resource]);
-        p_sys->vc_dispmanx_update_submit_sync(update);
-        p_sys->dpx_current_resource = next_resource;
-
-        subpicture_Delete(subpicture);
-    } else if (p_sys->dpx_element) {
-        update = p_sys->vc_dispmanx_update_start(10);
-        p_sys->vc_dispmanx_element_remove(update, p_sys->dpx_element);
-        p_sys->vc_dispmanx_update_submit_sync(update);
-        p_sys->dpx_element = 0;
     }
+
+    /* Remove remaining regions */
+    unused_dpx_region = *dpx_region;
+    while(unused_dpx_region) {
+        struct dpx_region *unused_dpx_region_next = unused_dpx_region->next;
+        if(!update)
+            update = sys->vc_dispmanx_update_start(10);
+        dpx_region_delete(sys, update, unused_dpx_region);
+        unused_dpx_region = unused_dpx_region_next;
+    }
+    *dpx_region = NULL;
+
+    if(update)
+        sys->vc_dispmanx_update_submit_sync(update);
 }
 #endif
 
 static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpicture)
 {
-    VLC_UNUSED(vd);
     VLC_UNUSED(subpicture);
     picture_sys_t *picsys = picture->p_sys;
     vout_display_sys_t *p_sys = picsys->sys;
@@ -1101,7 +1130,9 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
             picture_Release(picture);
     }
 
-    DisplaySubpicture(p_sys, subpicture);
+#ifdef RPI_OMX
+    DisplaySubpicture(vd, subpicture);
+#endif
 }
 
 static int Control(vout_display_t *vd, int query, va_list args)
