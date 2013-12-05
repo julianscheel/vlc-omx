@@ -784,10 +784,6 @@ static void SpuRenderRegion(spu_t *spu,
             convert_chroma = false;
     }
 
-    region_fmt.i_width = spu_scale_w(region->fmt.i_visible_width,  scale_size);
-    region_fmt.i_height = spu_scale_h(region->fmt.i_visible_height, scale_size);
-
-#if 0
     /* Scale from rendered size to destination size */
     if (sys->scale && sys->scale->p_module &&
         (!using_palette || (sys->scale_yuvp && sys->scale_yuvp->p_module)) &&
@@ -844,6 +840,7 @@ static void SpuRenderRegion(spu_t *spu,
                 }
             }
 
+#if 0
             /* Conversion(except from YUVP)/Scaling */
             if (picture &&
                 (picture->format.i_visible_width  != dst_width ||
@@ -870,6 +867,7 @@ static void SpuRenderRegion(spu_t *spu,
                 if (!picture)
                     msg_Err(spu, "scaling failed");
             }
+#endif
 
             /* */
             if (picture) {
@@ -892,7 +890,9 @@ static void SpuRenderRegion(spu_t *spu,
             region_picture = region->p_private->p_picture;
         }
     }
-#endif
+
+    region_fmt.i_width = spu_scale_w(region->fmt.i_visible_width,  scale_size);
+    region_fmt.i_height = spu_scale_h(region->fmt.i_visible_height, scale_size);
 
     /* Force cropping if requested */
     if (force_crop) {
