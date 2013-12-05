@@ -131,6 +131,7 @@ struct dpx_region_t {
     uint32_t pos_y;
     struct dpx_region_t *next;
     picture_t *pic;
+    VC_DISPMANX_ALPHA_T alpha;
 };
 #endif
 
@@ -191,7 +192,6 @@ struct vout_display_sys_t {
     int dpx_height;
     struct dpx_region_t *dpx_region;
     VC_IMAGE_TYPE_T dpx_type;
-    VC_DISPMANX_ALPHA_T dpx_alpha;
 #endif
 };
 
@@ -217,7 +217,10 @@ struct dpx_region_t *dpx_region_new(vout_display_t *vd, DISPMANX_UPDATE_HANDLE_T
     dpx_region->resource = sys->vc_dispmanx_resource_create(sys->dpx_type, dpx_region->bmp_rect.width | (region->p_picture->p[0].i_pitch << 16), dpx_region->bmp_rect.height, &dpx_image_handle);
 
     sys->vc_dispmanx_resource_write_data(dpx_region->resource, sys->dpx_type, region->p_picture->p[0].i_pitch, region->p_picture->p[0].p_pixels, &dpx_region->bmp_rect);
-    dpx_region->element = sys->vc_dispmanx_element_add(update, sys->dpx_handle, region->p_picture->p[0].i_pitch, &dpx_region->dst_rect, dpx_region->resource, &dpx_region->src_rect, DISPMANX_PROTECTION_NONE, &sys->dpx_alpha, NULL, VC_IMAGE_ROT0);
+    dpx_region->alpha.flags = DISPMANX_FLAGS_ALPHA_FROM_SOURCE | DISPMANX_FLAGS_ALPHA_MIX;
+    dpx_region->alpha.opacity = region->i_alpha;
+    dpx_region->alpha.mask = NULL;
+    dpx_region->element = sys->vc_dispmanx_element_add(update, sys->dpx_handle, region->p_picture->p[0].i_pitch, &dpx_region->dst_rect, dpx_region->resource, &dpx_region->src_rect, DISPMANX_PROTECTION_NONE, &dpx_region->alpha, NULL, VC_IMAGE_ROT0);
     dpx_region->next = NULL;
     dpx_region->pic = region->p_picture;
     return dpx_region;
@@ -866,8 +869,6 @@ static int Open(vlc_object_t *p_this)
     p_sys->dpx_width = mode.width;
     p_sys->dpx_height = mode.height;
     p_sys->dpx_type = VC_IMAGE_RGBA32;
-    p_sys->dpx_alpha.flags = DISPMANX_FLAGS_ALPHA_FROM_SOURCE;
-    p_sys->dpx_alpha.opacity = 255;
 #endif
 
     /* Fix initial state */
@@ -1080,7 +1081,8 @@ static void DisplaySubpicture(vout_display_t *vd, subpicture_t *subpicture) {
             else if(((*dpx_region)->bmp_rect.width != fmt->i_visible_width) ||
                     ((*dpx_region)->bmp_rect.height != fmt->i_visible_height) ||
                     ((*dpx_region)->pos_x != region->i_x) ||
-                    ((*dpx_region)->pos_y != region->i_y)) {
+                    ((*dpx_region)->pos_y != region->i_y) ||
+                    ((*dpx_region)->alpha.opacity != region->i_alpha)) {
                 struct dpx_region_t *dpx_region_next = (*dpx_region)->next;
                 if(!update)
                     update = sys->vc_dispmanx_update_start(10);
