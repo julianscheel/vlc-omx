@@ -463,6 +463,9 @@ libvlc_media_player_new( libvlc_instance_t *instance )
     var_Create (mp, "amem-rate", VLC_VAR_INTEGER | VLC_VAR_DOINHERIT);
     var_Create (mp, "amem-channels", VLC_VAR_INTEGER | VLC_VAR_DOINHERIT);
 
+    var_Create (mp, "omx-vout-crop", VLC_VAR_INTEGER);
+    var_Create (mp, "omx-vout-crop-hd", VLC_VAR_INTEGER);
+
     /* Video Title */
     var_Create (mp, "video-title-show", VLC_VAR_BOOL);
     var_Create (mp, "video-title-position", VLC_VAR_INTEGER);

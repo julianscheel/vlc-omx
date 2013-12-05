@@ -1145,6 +1145,40 @@ LIBVLC_API
 void libvlc_video_set_crop_geometry( libvlc_media_player_t *p_mi, const char *psz_geometry );
 
 /**
+ * Get current percentage cropping on omx vout for non hd content.
+ *
+ * \param p_mi the media player
+ * \return the crop perecentage
+ */
+LIBVLC_API int libvlc_video_get_omx_vout_crop(libvlc_media_player_t *p_mi);
+
+/**
+ * Set new crop percentage cropping on omx vout for non hd content.
+ *
+ * \param p_mi the media player
+ * \param psz_geometry new crop filter geometry (NULL to unset)
+ */
+LIBVLC_API
+void libvlc_video_set_omx_vout_crop(libvlc_media_player_t *p_mi, int crop);
+
+/**
+ * Get current percentage cropping on omx vout for non hd content.
+ *
+ * \param p_mi the media player
+ * \return the crop perecentage
+ */
+LIBVLC_API int libvlc_video_get_omx_vout_crop_hd(libvlc_media_player_t *p_mi);
+
+/**
+ * Set new crop percentage cropping on omx vout for non hd content.
+ *
+ * \param p_mi the media player
+ * \param psz_geometry new crop filter geometry (NULL to unset)
+ */
+LIBVLC_API
+void libvlc_video_set_omx_vout_crop_hd(libvlc_media_player_t *p_mi, int crop);
+
+/**
  * Get current teletext page requested.
  *
  * \param p_mi the media player
