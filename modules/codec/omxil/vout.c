@@ -1143,6 +1143,9 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
 #ifdef RPI_OMX
     DisplaySubpicture(vd, subpicture);
 #endif
+
+    if(subpicture)
+        subpicture_Delete(subpicture);
 }
 
 static int Control(vout_display_t *vd, int query, va_list args)
