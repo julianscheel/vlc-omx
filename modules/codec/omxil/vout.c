@@ -90,13 +90,18 @@ static void Close(vlc_object_t *);
 #define OMX_CROP_TEXT N_("OMX Video output cropping")
 #define OMX_CROP_LONGTEXT N_("Crops the specified fraction from images before outputting them")
 
+#define OMX_CROP_NAME_HD "omx-vout-crop-hd"
+#define OMX_CROP_TEXT_HD N_("OMX Video output cropping (HD)")
+#define OMX_CROP_LONGTEXT_HD N_("Crops the specified fraction from images before outputting them (HD)")
+
 vlc_module_begin()
     set_category(CAT_VIDEO)
     set_subcategory(SUBCAT_VIDEO_VOUT)
     set_shortname("omxil_vout")
     set_description(N_("OpenMAX IL video output"))
     set_capability("vout display", 0)
-    add_integer_with_range(OMX_CROP_NAME, 4, 0, 10, OMX_CROP_TEXT, OMX_CROP_LONGTEXT, false)
+    add_integer(OMX_CROP_NAME, 4, OMX_CROP_TEXT, OMX_CROP_LONGTEXT, false)
+    add_integer(OMX_CROP_NAME_HD, 4, OMX_CROP_TEXT_HD, OMX_CROP_LONGTEXT_HD, false)
     set_callbacks(Open, Close)
 vlc_module_end()
 
@@ -295,6 +300,7 @@ static OMX_ERRORTYPE OmxFillBufferDone(OMX_HANDLETYPE omx_handle,
 static OMX_ERRORTYPE UpdateDisplaySize(vout_display_t *vd, vout_display_cfg_t *cfg)
 {
     vout_display_sys_t *p_sys = vd->sys;
+    float fraction;
     OMX_CONFIG_DISPLAYREGIONTYPE config_display;
     OMX_INIT_STRUCTURE(config_display);
 
@@ -303,15 +309,17 @@ static OMX_ERRORTYPE UpdateDisplaySize(vout_display_t *vd, vout_display_cfg_t *c
     config_display.pixel_x = cfg->display.width  * vd->fmt.i_height;
     config_display.pixel_y = cfg->display.height * vd->fmt.i_width;
 
-    if (p_sys->deinterlace_enabled) {
-        OMX_DISPLAYRECTTYPE crop;
-        float fraction = var_InheritInteger(vd, OMX_CROP_NAME) / 100.0f;
-        config_display.set |= OMX_DISPLAY_SET_SRC_RECT;
-        config_display.src_rect.x_offset = (OMX_S32)(0.5f * fraction * vd->fmt.i_width);
-        config_display.src_rect.y_offset = (OMX_S32)(0.5f * fraction * vd->fmt.i_height);
-        config_display.src_rect.width = vd->fmt.i_width - 2 * config_display.src_rect.x_offset;
-        config_display.src_rect.height = vd->fmt.i_height - 2 * config_display.src_rect.y_offset;
-    }
+    if (vd->fmt.i_height < 720)
+        fraction = var_InheritInteger(vd, OMX_CROP_NAME) / 100.0f;
+    else
+        fraction = var_InheritInteger(vd, OMX_CROP_NAME_HD) / 100.0f;
+
+    OMX_DISPLAYRECTTYPE crop;
+    config_display.set |= OMX_DISPLAY_SET_SRC_RECT;
+    config_display.src_rect.x_offset = (OMX_S32)(0.5f * fraction * vd->fmt.i_width);
+    config_display.src_rect.y_offset = (OMX_S32)(0.5f * fraction * vd->fmt.i_height);
+    config_display.src_rect.width = vd->fmt.i_width - 2 * config_display.src_rect.x_offset;
+    config_display.src_rect.height = vd->fmt.i_height - 2 * config_display.src_rect.y_offset;
 
     return OMX_SetConfig(vd->sys->renderer_handle, OMX_IndexConfigDisplayRegion, &config_display);
 }
