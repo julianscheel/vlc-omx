@@ -100,4 +100,5 @@ struct decoder_sys_t
     int b_use_pts;
 
     mtime_t end_of_preroll_pts; /* PTS of first valid frame */
+    int drop_frames;
 };

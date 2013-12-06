@@ -755,6 +755,7 @@ static OMX_ERRORTYPE InitialiseComponent(decoder_t *p_dec,
         OMX_PARAM_BRCMVIDEODECODEERRORCONCEALMENTTYPE concanParam;
         OMX_INIT_STRUCTURE(concanParam);
         concanParam.bStartWithValidFrame = OMX_FALSE;
+        p_sys->drop_frames = 15;
 
         omx_error = OMX_SetParameter(omx_handle,
                 OMX_IndexParamBrcmVideoDecodeErrorConcealment, &concanParam);
@@ -1424,6 +1425,13 @@ reconfig:
 
     /* If picture is part of prerolling process do not send it to vout, but
      * discard it. */
+    if (p_pic && p_sys->drop_frames) {
+        p_sys->drop_frames--;
+        printf("Drop frames left: %d\n", p_sys->drop_frames);
+        picture_Release(p_pic);
+        return NULL;
+    }
+
     if (p_pic && (p_sys->end_of_preroll_pts == 0 ||
             p_sys->end_of_preroll_pts > p_pic->date)) {
         picture_Release(p_pic);
