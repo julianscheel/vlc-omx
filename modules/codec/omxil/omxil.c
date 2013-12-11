@@ -1427,7 +1427,6 @@ reconfig:
      * discard it. */
     if (p_pic && p_sys->drop_frames) {
         p_sys->drop_frames--;
-        printf("Drop frames left: %d\n", p_sys->drop_frames);
         picture_Release(p_pic);
         return NULL;
     }
