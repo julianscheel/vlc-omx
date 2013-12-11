@@ -40,6 +40,7 @@
 
 #define ALIGN(x, y) (((x) + ((y) - 1)) & ~((y) - 1))
 #define SCHEDULER_BUFFERED_PICTURES 4
+#define CLOCK_RESET_THRESHOLD 10000
 
 // Defined in the broadcom version of OMX_Index.h
 #define OMX_IndexConfigDisplayRegion 0x7f000010
@@ -1119,17 +1120,25 @@ static void DisplaySubpicture(vout_display_t *vd, subpicture_t *subpicture) {
 
 static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpicture)
 {
-    VLC_UNUSED(subpicture);
     picture_sys_t *picsys = picture->p_sys;
     vout_display_sys_t *p_sys = picsys->sys;
     OMX_BUFFERHEADERTYPE *p_buffer = picsys->buf;
-    OMX_TIME_CONFIG_CLOCKSTATETYPE clock_state;
-    OMX_TIME_CONFIG_TIMESTAMPTYPE clock_ts;
+    OMX_TIME_CONFIG_TIMESTAMPTYPE mediatime;
     OMX_ERRORTYPE omx_error;
+    mtime_t pts = mdate();
+    mtime_t now = pts - SCHEDULER_BUFFERED_PICTURES * p_sys->musecs_per_frame;
 
-    mtime_t now = mdate();
-    p_buffer->nTimeStamp = ToOmxTicks(now);
+    OMX_INIT_STRUCTURE(mediatime);
+    mediatime.nPortIndex = OMX_ALL;
+    OMX_GetConfig(p_sys->clock_handle, OMX_IndexConfigTimeCurrentMediaTime, &mediatime);
+    if(llabs(FromOmxTicks(mediatime.nTimestamp) - now) > CLOCK_RESET_THRESHOLD) {
+        msg_Dbg(vd, "Readjusting OMX clock, should be at: %"PRId64", is at: %"PRId64", diff: %"PRId64,
+                now, FromOmxTicks(mediatime.nTimestamp), llabs(FromOmxTicks(mediatime.nTimestamp) - now));
+        mediatime.nTimestamp = ToOmxTicks(now);
+        OMX_SetConfig(p_sys->clock_handle, OMX_IndexConfigTimeCurrentVideoReference, &mediatime);
+    }
 
+    p_buffer->nTimeStamp = ToOmxTicks(pts);
     p_buffer->nFilledLen = 3*p_sys->port.definition.format.video.nStride*p_sys->port.definition.format.video.nSliceHeight/2;
     p_buffer->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
     p_buffer->pAppPrivate = picture;
