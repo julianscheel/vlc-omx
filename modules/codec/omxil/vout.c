@@ -368,13 +368,18 @@ static OMX_ERRORTYPE set_video_format(OMX_HANDLETYPE *handle, OMX_PARAM_PORTDEFI
     return OMX_GetParameter(handle, OMX_IndexParamPortDefinition, def);
 }
 
-static OMX_ERRORTYPE SetDeinterlaceMode(OMX_HANDLETYPE *handle, OMX_U32 port_index, bool enable) {
+static OMX_ERRORTYPE SetDeinterlaceMode(OMX_HANDLETYPE *handle, OMX_U32 port_index, bool enable, mtime_t musecs_per_frame) {
     OMX_CONFIG_IMAGEFILTERPARAMSTYPE config;
 
     OMX_INIT_STRUCTURE(config);
     config.nPortIndex = port_index;
     if (enable) {
-        config.nNumParams = 1;
+        if (musecs_per_frame) {
+            config.nNumParams = 2;
+            config.nParams[1] = musecs_per_frame;
+        } else {
+            config.nNumParams = 1;
+        }
         config.nParams[0] = 3;
         config.eImageFilter = OMX_ImageFilterDeInterlaceAdvanced;
     } else {
@@ -477,12 +482,6 @@ static void set_misecs_per_frame(vout_display_sys_t *p_sys, video_format_t *fmt)
         p_sys->musecs_per_frame = 20000;
     else
         p_sys->musecs_per_frame = 40000;
-
-    /*if (fmt && (fmt->i_frame_rate_base > 0) && (fmt->i_frame_rate > 0)) {*/
-        /*p_sys->musecs_per_frame = (mtime_t)1000000 * fmt->i_frame_rate_base / fmt->i_frame_rate;*/
-    /*} else {*/
-        /*p_sys->musecs_per_frame = 0;*/
-    /*}*/
 }
 
 static int Open(vlc_object_t *p_this)
@@ -743,7 +742,7 @@ static int Open(vlc_object_t *p_this)
     CHECK_ERROR(omx_error, "Wait for OMX_EventCmdComplete OMX_StateIdle failed (%x: %s)",
             omx_error, ErrorToString(omx_error));
 
-    omx_error = SetDeinterlaceMode(p_sys->image_fx_handle, p_sys->image_fx_port_out, p_sys->deinterlace_enabled);
+    omx_error = SetDeinterlaceMode(p_sys->image_fx_handle, p_sys->image_fx_port_out, p_sys->deinterlace_enabled, p_sys->musecs_per_frame);
     CHECK_ERROR(omx_error, "SetDeinterlaceMode to false failed (%x: %s)",
             omx_error, ErrorToString(omx_error));
 
