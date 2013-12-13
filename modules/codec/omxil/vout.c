@@ -476,13 +476,22 @@ static OMX_ERRORTYPE transition_to_state(OmxEventQueue *queue, OMX_HANDLETYPE *h
 }
 
 static void set_misecs_per_frame(vout_display_sys_t *p_sys, video_format_t *fmt) {
-    /* FIXME: This is seriously hacky... */
-    if(!fmt)
-        p_sys->musecs_per_frame = 0;
-    else if(fmt->i_height == 720)
+    double fps = 0;
+    if(fmt->i_frame_rate_base)
+        fps = (double)fmt->i_frame_rate / fmt->i_frame_rate_base;
+
+    if((fps >= 20.0) && (fps <= 65.0)) {
+        /* Use given fps when it is a sensible range */
+        p_sys->musecs_per_frame = (mtime_t)(1000000.0 / fps);
+    }
+    else if(fmt->i_height == 720) {
+        /* Assume fps == 50.0 */
         p_sys->musecs_per_frame = 20000;
-    else
+    }
+    else {
+        /* Assume fps == 25.0 */
         p_sys->musecs_per_frame = 40000;
+    }
 }
 
 static int Open(vlc_object_t *p_this)
