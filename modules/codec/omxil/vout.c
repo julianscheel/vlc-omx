@@ -40,7 +40,7 @@
 
 #define ALIGN(x, y) (((x) + ((y) - 1)) & ~((y) - 1))
 #define SCHEDULER_BUFFERED_PICTURES 4
-#define CLOCK_RESET_THRESHOLD 10000
+#define CLOCK_RESET_THRESHOLD ((mtime_t)60*60*1000*1000)
 
 // Defined in the broadcom version of OMX_Index.h
 #define OMX_IndexConfigDisplayRegion 0x7f000010
@@ -150,6 +150,7 @@ struct vout_display_sys_t {
     OmxEventQueue clock_eq;
     OMX_U32 clock_port_out;
     bool clock_initialized;
+    mtime_t clock_next_reset;
 
     OMX_HANDLETYPE scheduler_handle;
     OmxEventQueue scheduler_eq;
@@ -1127,14 +1128,13 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
     mtime_t pts = mdate();
     mtime_t now = pts - SCHEDULER_BUFFERED_PICTURES * p_sys->musecs_per_frame;
 
-    OMX_INIT_STRUCTURE(mediatime);
-    mediatime.nPortIndex = OMX_ALL;
-    OMX_GetConfig(p_sys->clock_handle, OMX_IndexConfigTimeCurrentMediaTime, &mediatime);
-    if(llabs(FromOmxTicks(mediatime.nTimestamp) - now) > CLOCK_RESET_THRESHOLD) {
-        msg_Dbg(vd, "Readjusting OMX clock, should be at: %"PRId64", is at: %"PRId64", diff: %"PRId64,
-                now, FromOmxTicks(mediatime.nTimestamp), llabs(FromOmxTicks(mediatime.nTimestamp) - now));
+    if(p_sys->clock_next_reset < pts) {
+        OMX_INIT_STRUCTURE(mediatime);
+        mediatime.nPortIndex = OMX_ALL;
+        msg_Dbg(vd, "Readjusting OMX clock, should be at: %"PRId64, now);
         mediatime.nTimestamp = ToOmxTicks(now);
         OMX_SetConfig(p_sys->clock_handle, OMX_IndexConfigTimeCurrentVideoReference, &mediatime);
+        p_sys->clock_next_reset = pts + CLOCK_RESET_THRESHOLD;
     }
 
     p_buffer->nTimeStamp = ToOmxTicks(pts);
