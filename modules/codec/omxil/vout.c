@@ -24,6 +24,8 @@
 # include "config.h"
 #endif
 
+#include <math.h>
+
 #include <vlc_common.h>
 #include <vlc_plugin.h>
 #include <vlc_vout_display.h>
@@ -41,6 +43,7 @@
 #define ALIGN(x, y) (((x) + ((y) - 1)) & ~((y) - 1))
 #define SCHEDULER_BUFFERED_PICTURES 4
 #define CLOCK_RESET_THRESHOLD ((mtime_t)60*60*1000*1000)
+#define VC_TV_MAX_MODE_IDS 127
 
 // Defined in the broadcom version of OMX_Index.h
 #define OMX_IndexConfigDisplayRegion 0x7f000010
@@ -86,6 +89,7 @@ void print_omx_debug_info(vlc_object_t *vlc_obj) {
  *****************************************************************************/
 static int  Open (vlc_object_t *);
 static void Close(vlc_object_t *);
+static void close_dpx(vout_display_t *);
 
 #define OMX_CROP_NAME "omx-vout-crop"
 #define OMX_CROP_TEXT N_("OMX Video output cropping")
@@ -164,9 +168,20 @@ struct vout_display_sys_t {
 
     OmxPort port;
     mtime_t musecs_per_frame;
+    bool valid_fps;
 
 #ifdef RPI_OMX
     void* dpx_lib;
+    VCHI_INSTANCE_T vchi_instance;
+
+    /* VideoCore */
+    int32_t (*vchi_initialise)(VCHI_INSTANCE_T *);
+    int32_t (*vchi_exit)(void);
+    int32_t (*vchi_connect)(VCHI_CONNECTION_T **, uint32_t, VCHI_INSTANCE_T);
+
+    /* DispmanX */
+    void (*vc_vchi_dispmanx_init)(VCHI_INSTANCE_T, VCHI_CONNECTION_T **, uint32_t);
+    void (*vc_dispmanx_stop)(void);
     DISPMANX_DISPLAY_HANDLE_T (*vc_dispmanx_display_open)(uint32_t);
     int (*vc_dispmanx_display_close)(DISPMANX_DISPLAY_HANDLE_T);
 
@@ -175,7 +190,7 @@ struct vout_display_sys_t {
 
     DISPMANX_ELEMENT_HANDLE_T (*vc_dispmanx_element_add)(DISPMANX_UPDATE_HANDLE_T, DISPMANX_DISPLAY_HANDLE_T,
             int32_t, const VC_RECT_T*, DISPMANX_RESOURCE_HANDLE_T,
-            const VC_RECT_T*, DISPMANX_PROTECTION_T, 
+            const VC_RECT_T*, DISPMANX_PROTECTION_T,
             VC_DISPMANX_ALPHA_T*,
             DISPMANX_CLAMP_T*, DISPMANX_TRANSFORM_T);
 
@@ -188,6 +203,12 @@ struct vout_display_sys_t {
     DISPMANX_UPDATE_HANDLE_T (*vc_dispmanx_update_start)(int32_t);
     int (*vc_dispmanx_update_submit_sync)(DISPMANX_UPDATE_HANDLE_T);
 
+    /* VideoCore TV Service */
+    int (*vc_tv_get_display_state)(TV_DISPLAY_STATE_T *);
+    int (*vc_tv_hdmi_get_supported_modes_new)(HDMI_RES_GROUP_T, TV_SUPPORTED_MODE_NEW_T *, uint32_t, HDMI_RES_GROUP_T *, uint32_t *);
+    int (*vc_tv_hdmi_power_on_best)(uint32_t, uint32_t, uint32_t, HDMI_INTERLACED_T, EDID_MODE_MATCH_FLAG_T);
+
+    VCHI_CONNECTION_T *vchi_dpx_connection;
     int dpx_device;
     DISPMANX_DISPLAY_HANDLE_T dpx_handle;
     int dpx_width;
@@ -307,8 +328,15 @@ static OMX_ERRORTYPE UpdateDisplaySize(vout_display_t *vd, vout_display_cfg_t *c
     vout_display_sys_t *p_sys = vd->sys;
     float fraction;
     OMX_CONFIG_DISPLAYREGIONTYPE config_display;
-    OMX_INIT_STRUCTURE(config_display);
+    TV_DISPLAY_STATE_T tvstate;
+    TV_SUPPORTED_MODE_NEW_T supported_modes[VC_TV_MAX_MODE_IDS];
+    int num_modes;
+    uint32_t refresh_rate = (uint32_t)round(1000000.0 / p_sys->musecs_per_frame);
 
+    if(p_sys->deinterlace_enabled)
+        refresh_rate *= 2;
+
+    OMX_INIT_STRUCTURE(config_display);
     config_display.nPortIndex = p_sys->renderer_port_in;
     config_display.set = OMX_DISPLAY_SET_PIXEL;
     config_display.pixel_x = cfg->display.width  * vd->fmt.i_height;
@@ -325,6 +353,30 @@ static OMX_ERRORTYPE UpdateDisplaySize(vout_display_t *vd, vout_display_cfg_t *c
     config_display.src_rect.y_offset = (OMX_S32)(0.5f * fraction * vd->fmt.i_height);
     config_display.src_rect.width = vd->fmt.i_width - 2 * config_display.src_rect.x_offset;
     config_display.src_rect.height = vd->fmt.i_height - 2 * config_display.src_rect.y_offset;
+
+    p_sys->vc_tv_get_display_state(&tvstate);
+    if(p_sys->valid_fps && (tvstate.display.hdmi.mode != HDMI_MODE_OFF)) {
+        int best_id = -1;
+        double best_score;
+        num_modes = p_sys->vc_tv_hdmi_get_supported_modes_new(tvstate.display.hdmi.group, supported_modes, VC_TV_MAX_MODE_IDS, NULL, NULL);
+
+        for(int i = 0; i < num_modes; ++i) {
+            float score;
+            if((supported_modes[i].width != tvstate.display.hdmi.width) || (supported_modes[i].height != tvstate.display.hdmi.height))
+                continue;
+
+            score = fmod(supported_modes[i].frame_rate, refresh_rate);
+            if((best_id < 0) || (score < best_score)) {
+                best_id = i;
+                best_score = score;
+            }
+        }
+
+        if((best_id >= 0) && (tvstate.display.hdmi.frame_rate != supported_modes[best_id].frame_rate)) {
+            msg_Dbg(vd, "Setting HDMI refresh rate to %"PRIu32, supported_modes[best_id].frame_rate);
+            p_sys->vc_tv_hdmi_power_on_best(0, 0, supported_modes[best_id].frame_rate, 0, HDMI_MODE_MATCH_FRAMERATE);
+        }
+    }
 
     return OMX_SetConfig(vd->sys->renderer_handle, OMX_IndexConfigDisplayRegion, &config_display);
 }
@@ -483,14 +535,17 @@ static void set_misecs_per_frame(vout_display_sys_t *p_sys, video_format_t *fmt)
     if((fps >= 20.0) && (fps <= 65.0)) {
         /* Use given fps when it is a sensible range */
         p_sys->musecs_per_frame = (mtime_t)(1000000.0 / fps);
+        p_sys->valid_fps = true;
     }
     else if(fmt->i_height == 720) {
         /* Assume fps == 50.0 */
         p_sys->musecs_per_frame = 20000;
+        p_sys->valid_fps = true;
     }
     else {
         /* Assume fps == 25.0 */
         p_sys->musecs_per_frame = 40000;
+        p_sys->valid_fps = false;
     }
 }
 
@@ -525,6 +580,59 @@ static int Open(vlc_object_t *p_this)
     p_sys->deinterlace_enabled = vd->fmt.i_height != 720;
 
     set_misecs_per_frame(p_sys, &vd->fmt);
+
+#ifdef RPI_OMX
+    p_sys->dpx_lib = dlopen("libbcm_host.so", RTLD_NOW);
+    if (!p_sys)
+        msg_Err(vd, "Could not load libbcm_host.so");
+
+    p_sys->vchi_initialise = dlsym(p_sys->dpx_lib, "vchi_initialise");
+    p_sys->vchi_exit = dlsym(p_sys->dpx_lib, "vchi_exit");
+    p_sys->vchi_connect = dlsym(p_sys->dpx_lib, "vchi_connect");
+
+    p_sys->vc_vchi_dispmanx_init = dlsym(p_sys->dpx_lib, "vc_vchi_dispmanx_init");
+    p_sys->vc_dispmanx_stop = dlsym(p_sys->dpx_lib, "vc_dispmanx_stop");
+    p_sys->vc_dispmanx_display_open = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_display_open");
+    p_sys->vc_dispmanx_display_close = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_display_close");
+    p_sys->vc_dispmanx_resource_create = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_resource_create");
+    p_sys->vc_dispmanx_resource_delete = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_resource_delete");
+    p_sys->vc_dispmanx_element_add = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_element_add");
+    p_sys->vc_dispmanx_element_remove = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_element_remove");
+    p_sys->vc_dispmanx_update_start = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_update_start");
+    p_sys->vc_dispmanx_update_submit_sync = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_update_submit_sync");
+    p_sys->vc_dispmanx_rect_set = dlsym(p_sys->dpx_lib, "vc_dispmanx_rect_set");
+    p_sys->vc_dispmanx_resource_write_data = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_resource_write_data");
+    p_sys->vc_dispmanx_element_modified = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_element_modified");
+    p_sys->vc_dispmanx_element_change_source = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_element_change_source");
+    p_sys->vc_dispmanx_display_get_info = dlsym(p_sys->dpx_lib,
+            "vc_dispmanx_display_get_info");
+
+    p_sys->vc_tv_get_display_state = dlsym(p_sys->dpx_lib, "vc_tv_get_display_state");
+    p_sys->vc_tv_hdmi_get_supported_modes_new = dlsym(p_sys->dpx_lib, "vc_tv_hdmi_get_supported_modes_new");
+    p_sys->vc_tv_hdmi_power_on_best = dlsym(p_sys->dpx_lib, "vc_tv_hdmi_power_on_best");
+
+    /* Initialize VideoCore */
+    p_sys->vchi_initialise(&p_sys->vchi_instance);
+    p_sys->vchi_connect(NULL, 0, p_sys->vchi_instance);
+
+    /* Initialize DispmanX */
+    p_sys->dpx_handle = p_sys->vc_dispmanx_display_open(p_sys->dpx_device);
+    p_sys->vc_dispmanx_display_get_info(p_sys->dpx_handle, &mode);
+    p_sys->dpx_width = mode.width;
+    p_sys->dpx_height = mode.height;
+    p_sys->dpx_type = VC_IMAGE_RGBA32;
+#endif
 
     /* Initialize image_fx component */
     InitOmxEventQueue(&p_sys->image_fx_eq);
@@ -843,44 +951,6 @@ static int Open(vlc_object_t *p_this)
         goto error;
     }
 
-#ifdef RPI_OMX
-    p_sys->dpx_lib = dlopen("libbcm_host.so", RTLD_NOW);
-    if (!p_sys)
-        msg_Err(vd, "Could not load libbcm_host.so");
-
-    p_sys->vc_dispmanx_display_open = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_display_open");
-    p_sys->vc_dispmanx_display_close = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_display_close");
-    p_sys->vc_dispmanx_resource_create = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_resource_create");
-    p_sys->vc_dispmanx_resource_delete = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_resource_delete");
-    p_sys->vc_dispmanx_element_add = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_element_add");
-    p_sys->vc_dispmanx_element_remove = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_element_remove");
-    p_sys->vc_dispmanx_update_start = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_update_start");
-    p_sys->vc_dispmanx_update_submit_sync = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_update_submit_sync");
-    p_sys->vc_dispmanx_rect_set = dlsym(p_sys->dpx_lib, "vc_dispmanx_rect_set");
-    p_sys->vc_dispmanx_resource_write_data = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_resource_write_data");
-    p_sys->vc_dispmanx_element_modified = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_element_modified");
-    p_sys->vc_dispmanx_element_change_source = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_element_change_source");
-    p_sys->vc_dispmanx_display_get_info = dlsym(p_sys->dpx_lib,
-            "vc_dispmanx_display_get_info");
-
-    p_sys->dpx_handle = p_sys->vc_dispmanx_display_open(p_sys->dpx_device);
-    p_sys->vc_dispmanx_display_get_info(p_sys->dpx_handle, &mode);
-    p_sys->dpx_width = mode.width;
-    p_sys->dpx_height = mode.height;
-    p_sys->dpx_type = VC_IMAGE_RGBA32;
-#endif
-
     /* Fix initial state */
     vout_display_SendEventFullscreen(vd, true);
 
@@ -895,6 +965,21 @@ error:
     return VLC_EGENERIC;
 }
 
+static void close_dpx(vout_display_t *vd) {
+    vout_display_sys_t *p_sys = vd->sys;
+    DISPMANX_UPDATE_HANDLE_T update = p_sys->vc_dispmanx_update_start(10);
+    struct dpx_region_t *dpx_region = p_sys->dpx_region;
+    while(dpx_region) {
+        struct dpx_region_t *dpx_region_next = dpx_region->next;
+        dpx_region_delete(p_sys, update, dpx_region);
+        dpx_region = dpx_region_next;
+    }
+    p_sys->vc_dispmanx_update_submit_sync(update);
+    p_sys->dpx_region = NULL;
+    p_sys->vc_dispmanx_display_close(p_sys->dpx_handle);
+    p_sys->dpx_handle = NULL;
+}
+
 static void Close(vlc_object_t *p_this)
 {
     vout_display_t *vd = (vout_display_t *)p_this;
@@ -905,16 +990,7 @@ static void Close(vlc_object_t *p_this)
     OMX_TIME_CONFIG_CLOCKSTATETYPE clock_state;
 
 #ifdef RPI_OMX
-    DISPMANX_UPDATE_HANDLE_T update = p_sys->vc_dispmanx_update_start(10);
-    struct dpx_region_t *dpx_region = p_sys->dpx_region;
-    while(dpx_region) {
-        struct dpx_region_t *dpx_region_next = dpx_region->next;
-        dpx_region_delete(p_sys, update, dpx_region);
-        dpx_region = dpx_region_next;
-    }
-    p_sys->vc_dispmanx_update_submit_sync(update);
-
-    p_sys->vc_dispmanx_display_close(p_sys->dpx_handle);
+    close_dpx(vd);
 #endif
 
     OMX_INIT_STRUCTURE(clock_state);
