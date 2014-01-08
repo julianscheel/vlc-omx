@@ -217,7 +217,8 @@ static OMX_ERRORTYPE SetPortDefinition(decoder_t *p_dec, OmxPort *p_port,
     CHECK_ERROR(omx_error, "OMX_GetParameter failed (%x : %s)",
                 omx_error, ErrorToString(omx_error));
 
-    def->nBufferCountActual = 2;
+    if(def->nPortIndex == 131)
+        def->nBufferCountActual = 2;
 
     switch(p_fmt->i_cat)
     {
