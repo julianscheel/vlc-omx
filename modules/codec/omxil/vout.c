@@ -636,7 +636,7 @@ static int Open(vlc_object_t *p_this)
     p_sys->dpx_type = VC_IMAGE_RGBA32;
 
     /* Add a black background behind the video */
-    uint32_t image_ptr, background = 0x000000FF;
+    uint32_t image_ptr, background = 0xFF000000;
     VC_RECT_T dst_rect, src_rect;
     DISPMANX_UPDATE_HANDLE_T update;
     p_sys->dpx_bkg_resource =
