@@ -357,6 +357,7 @@ static OMX_ERRORTYPE UpdateDisplaySize(vout_display_t *vd, vout_display_cfg_t *c
     config_display.src_rect.width = vd->fmt.i_width - 2 * config_display.src_rect.x_offset;
     config_display.src_rect.height = vd->fmt.i_height - 2 * config_display.src_rect.y_offset;
 
+#if 0
     p_sys->vc_tv_get_display_state(&tvstate);
     if(p_sys->valid_fps && (tvstate.display.hdmi.mode != HDMI_MODE_OFF)) {
         int best_id = -1;
@@ -380,6 +381,7 @@ static OMX_ERRORTYPE UpdateDisplaySize(vout_display_t *vd, vout_display_cfg_t *c
             p_sys->vc_tv_hdmi_power_on_best(0, 0, supported_modes[best_id].frame_rate, 0, HDMI_MODE_MATCH_FRAMERATE);
         }
     }
+#endif
 
     return OMX_SetConfig(vd->sys->renderer_handle, OMX_IndexConfigDisplayRegion, &config_display);
 }
