@@ -215,6 +215,7 @@ struct vout_display_sys_t {
     int dpx_height;
     struct dpx_region_t *dpx_region;
     VC_IMAGE_TYPE_T dpx_type;
+    bool bkg_shown;
     DISPMANX_RESOURCE_HANDLE_T dpx_bkg_resource;
     DISPMANX_ELEMENT_HANDLE_T dpx_bkg_element;
 #endif
@@ -551,6 +552,25 @@ static void set_misecs_per_frame(vout_display_sys_t *p_sys, video_format_t *fmt)
     }
 }
 
+static void show_background(vout_display_sys_t *sys) {
+    uint32_t image_ptr, background = 0xFF000000;
+    VC_RECT_T dst_rect, src_rect;
+    DISPMANX_UPDATE_HANDLE_T update;
+
+    sys->dpx_bkg_resource = sys->vc_dispmanx_resource_create(sys->dpx_type, 1, 1, &image_ptr);
+    sys->vc_dispmanx_rect_set(&dst_rect, 0, 0, 1, 1);
+    sys->vc_dispmanx_resource_write_data(sys->dpx_bkg_resource, sys->dpx_type, sizeof(background), &background, &dst_rect);
+    sys->vc_dispmanx_rect_set(&src_rect, 0, 0, 1 << 16, 1 << 16);
+    sys->vc_dispmanx_rect_set(&dst_rect, 0, 0, 0, 0);
+    update = sys->vc_dispmanx_update_start(0);
+    sys->dpx_bkg_element = sys->vc_dispmanx_element_add(update,
+            sys->dpx_handle, -1, &dst_rect, sys->dpx_bkg_resource,
+            &src_rect, DISPMANX_PROTECTION_NONE, NULL, NULL,
+            (DISPMANX_TRANSFORM_T)0);
+    sys->vc_dispmanx_update_submit_sync(update);
+    sys->bkg_shown = true;
+}
+
 static int Open(vlc_object_t *p_this)
 {
     vout_display_t *vd = (vout_display_t *)p_this;
@@ -634,24 +654,6 @@ static int Open(vlc_object_t *p_this)
     p_sys->dpx_width = mode.width;
     p_sys->dpx_height = mode.height;
     p_sys->dpx_type = VC_IMAGE_RGBA32;
-
-    /* Add a black background behind the video */
-    uint32_t image_ptr, background = 0xFF000000;
-    VC_RECT_T dst_rect, src_rect;
-    DISPMANX_UPDATE_HANDLE_T update;
-    p_sys->dpx_bkg_resource =
-        p_sys->vc_dispmanx_resource_create(p_sys->dpx_type, 1, 1, &image_ptr);
-    p_sys->vc_dispmanx_rect_set(&dst_rect, 0, 0, 1, 1);
-    p_sys->vc_dispmanx_resource_write_data(p_sys->dpx_bkg_resource,
-            p_sys->dpx_type, sizeof(background), &background, &dst_rect);
-    p_sys->vc_dispmanx_rect_set(&src_rect, 0, 0, 1 << 16, 1 << 16);
-    p_sys->vc_dispmanx_rect_set(&dst_rect, 0, 0, 0, 0);
-    update = p_sys->vc_dispmanx_update_start(0);
-    p_sys->dpx_bkg_element = p_sys->vc_dispmanx_element_add(update,
-            p_sys->dpx_handle, -1, &dst_rect, p_sys->dpx_bkg_resource,
-            &src_rect, DISPMANX_PROTECTION_NONE, NULL, NULL,
-            (DISPMANX_TRANSFORM_T)0);
-    p_sys->vc_dispmanx_update_submit_sync(update);
 #endif
 
     /* Initialize image_fx component */
@@ -1234,6 +1236,9 @@ static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
     OMX_ERRORTYPE omx_error;
     mtime_t pts = mdate();
     mtime_t now = pts - SCHEDULER_BUFFERED_PICTURES * p_sys->musecs_per_frame;
+
+    if(!p_sys->bkg_shown)
+        show_background(p_sys);
 
     if(p_sys->clock_next_reset < pts) {
         OMX_INIT_STRUCTURE(mediatime);
