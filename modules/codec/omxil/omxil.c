@@ -237,6 +237,9 @@ static OMX_ERRORTYPE SetPortDefinition(decoder_t *p_dec, OmxPort *p_port,
             if (def->eDir == OMX_DirInput && p_dec->p_sys->b_enc)
                 def->nBufferSize = def->format.video.nFrameWidth *
                   def->format.video.nFrameHeight * 2;
+            else if(def->eDir == OMX_DirInput)
+                def->nBufferSize = 1024*1024;
+
             p_port->i_frame_size = def->nBufferSize;
 
             if(!GetOmxVideoFormat(p_fmt->i_codec,
@@ -884,7 +887,7 @@ static int OpenGeneric( vlc_object_t *p_this, bool b_encode )
     vlc_cond_init (&p_sys->in.fifo.wait);
     p_sys->in.fifo.offset = offsetof(OMX_BUFFERHEADERTYPE, pOutputPortPrivate) / sizeof(void *);
     p_sys->in.fifo.pp_last = &p_sys->in.fifo.p_first;
-    p_sys->in.b_direct = false;
+    p_sys->in.b_direct = true;
     p_sys->in.b_flushed = true;
     p_sys->in.p_fmt = &p_dec->fmt_in;
     vlc_mutex_init (&p_sys->out.fifo.lock);
