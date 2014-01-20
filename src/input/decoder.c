@@ -2109,8 +2109,7 @@ static picture_t *vout_new_buffer( decoder_t *p_dec )
                                              p_vout, &fmt,
                                              p_dec->i_dpb_picture_buffers +
                                              p_dec->i_extra_picture_buffers +
-                                             1 + DECODER_MAX_BUFFERING_COUNT,
-                                             true );
+                                             1, true );
         vlc_mutex_lock( &p_owner->lock );
         p_owner->p_vout = p_vout;
 
