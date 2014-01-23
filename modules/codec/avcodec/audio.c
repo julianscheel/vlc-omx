@@ -265,11 +265,13 @@ block_t * DecodeAudio ( decoder_t *p_dec, block_t **pp_block )
 {
     decoder_sys_t *p_sys = p_dec->p_sys;
     AVCodecContext *ctx = p_sys->p_context;
+    mtime_t input_pts;
 
     if( !pp_block || !*pp_block )
         return NULL;
 
     block_t *p_block = *pp_block;
+    input_pts = p_block->i_pts;
 
     if( !ctx->extradata_size && p_dec->fmt_in.i_extra && p_sys->b_delayed_open)
     {
@@ -443,6 +445,7 @@ block_t * DecodeAudio ( decoder_t *p_dec, block_t **pp_block )
     p_block->i_pts = date_Get( &p_sys->end_date );
     p_block->i_length = date_Increment( &p_sys->end_date,
                                       p_block->i_nb_samples ) - p_block->i_pts;
+    p_block->i_pts = input_pts;
     return p_block;
 
 end:
